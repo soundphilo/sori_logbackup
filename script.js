@@ -19,9 +19,6 @@ if (!dataBlobUrl) {
         });
 }
 
-// 빌더 및 아래 renderPreview 함수는 기존 코드와 100% 동일합니다.
-function generatePureHtmlHtml(bodyContent) { ... }
-function renderPreview(logs) { ... }
 
 // 다운로드용 풀 HTML 소스 빌더
 function generatePureHtmlHtml(bodyContent) {
