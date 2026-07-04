@@ -36,6 +36,54 @@
         p.message-bubble { background-color: #141414; border-radius: 8px; padding: 8px 14px !important; font-size: 14px; line-height: 1.6; white-space: pre-wrap; word-break: break-all; color: #dddddd; margin: 0; width: fit-content; max-width: 100%; box-sizing: border-box; }
         .narration-box { background-color: #2d2d2d; border-radius: 8px; padding: 10px 14px !important; font-size: 14px; line-height: 1.6; white-space: pre-wrap; word-break: break-all; color: #ffffff; text-align: center; width: 100%; box-sizing: border-box; margin: 2px 0; }
         .tab-tag { position: absolute; top: 2px; right: 2px; display: inline-block; padding: 2px 6px; font-size: 10px; border-radius: 4px; background-color: #333; color: #aaa;}
+        /* ✨ [4.0 추가] 말풍선 수정/삭제 기능 관련 스타일 */
+        p.message-bubble {
+            position: relative;
+            group: hover; /* 아래에서 마우스 호버 감지용 */
+        }
+        
+        /* 말풍선 컨테이너 안에서 버튼들이 배치될 공간 */
+        .bubble-wrapper {
+            position: relative;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            max-width: 100%;
+        }
+        
+        /* 수정/삭제 버튼 그룹 */
+        .bubble-actions {
+            display: flex;
+            gap: 4px;
+            opacity: 0; /* 평소에는 숨김 */
+            transition: opacity 0.2s;
+        }
+        
+        /* 말풍선 주변에 마우스를 올리면 버튼이 나타남 */
+        .bubble-wrapper:hover .bubble-actions {
+            opacity: 1;
+        }
+        
+        /* 수정/삭제 미니 버튼 디자인 */
+        .action-mini-btn {
+            background: #333;
+            color: #aaa;
+            border: 1px solid #555;
+            padding: 2px 6px;
+            border-radius: 4px;
+            font-size: 11px;
+            cursor: pointer;
+            transition: 0.1s;
+        }
+        .action-mini-btn:hover {
+            color: #fff;
+            background: #444;
+        }
+        .action-mini-btn.delete-btn:hover {
+            background: #901a1a;
+            border-color: #ff4d4d;
+            color: #fff;
+        }
     </style>
 </head>
 <body>
