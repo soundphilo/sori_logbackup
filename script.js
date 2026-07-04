@@ -1,11 +1,10 @@
 let generatedHtmlBody = ""; 
 let scraperLogs = []; // 확장 프로그램 창고에서 꺼내온 데이터가 담길 곳
 
-// 🎯 [수정된 핵심 파트] 이제 주소창(?data=...) 대신 확장 프로그램의 로컬 창고에서 안전하게 데이터를 꺼내옵니다.
+// 🎯 1. 페이지 로드 시 확장 프로그램 창고에서 데이터를 꺼내오는 파트
 document.addEventListener('DOMContentLoaded', () => {
     const statusDiv = document.getElementById('status');
 
-    // 확장 프로그램 환경의 창고(chrome.storage)가 활성화되어 있는지 확인
     if (typeof chrome !== 'undefined' && chrome.storage && chrome.storage.local) {
         chrome.storage.local.get(["ccfolia_scraped_data"], (result) => {
             const receivedData = result.ccfolia_scraped_data;
@@ -17,7 +16,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     statusDiv.innerText = "✅ 확장 프로그램 데이터 연동 완료! 파일을 업로드해 주세요.";
                     statusDiv.style.color = "#4caf50";
                     
-                    // 다음 연동을 위해 사용한 임시 데이터는 창고에서 깔끔하게 비워줍니다.
+                    // 다음 연동을 위해 창고 비우기
                     chrome.storage.local.remove(["ccfolia_scraped_data"]);
                 } catch (e) {
                     statusDiv.innerText = "❌ 데이터 복원 오류가 발생했습니다.";
@@ -30,13 +29,12 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         });
     } else {
-        // 일반 브라우저로 주소 직접 입력해서 들어왔을 때의 안내
         statusDiv.innerText = "ℹ️ 확장 프로그램을 통해 코코포리아 룸에서 데이터를 전송한 뒤 이용해 주세요.";
         statusDiv.style.color = "#2196f3";
     }
 });
 
-// 👇 여기서부터 아래 코드들은 기존 유저님이 올려주신 코드와 100% 동일합니다!
+// 🎯 2. [미리보기 생성] 버튼 클릭 이벤트 파트
 document.getElementById('preview-btn').addEventListener('click', () => {
     const fileInput = document.getElementById('log-file');
     const narrationName = document.getElementById('narration-name').value.trim();
@@ -60,6 +58,7 @@ document.getElementById('preview-btn').addEventListener('click', () => {
     reader.readAsText(file);
 });
 
+// 🎯 3. 백업 파일 분석 및 매칭 엔진 파트 (핵심 공장)
 function generatePreview(fileText, narrationName, includeChatter) {
     const finalOrderedLogs = [];
     const pTagRegex = /<p[^>]*>([\s\S]*?)<\/p>/gi;
@@ -94,23 +93,25 @@ function generatePreview(fileText, narrationName, includeChatter) {
 
         if (!includeChatter && fileTab === '잡담') continue; 
 
-        // 3.6 유니코드 무적 매칭 레이어
+        // 💡 무적 스크래핑 맞춤형 3단계 유연한 매칭 레이어
         let matchedLog = scraperLogs.find(log => {
-            const cleanScrapKey = getPureKey(log.matchKey);
-            return !log.used && log.tabName === fileTab && log.name === fileName && cleanScrapKey === fileMatchKey;
+            if (!log || log.used) return false;
+            const cleanScrapKey = getPureKey(log.matchKey || log.textContent);
+            return log.name === fileName && cleanScrapKey === fileMatchKey;
         });
 
         if (!matchedLog) {
             matchedLog = scraperLogs.find(log => {
-                const cleanScrapKey = getPureKey(log.matchKey);
-                return !log.used && log.name === fileName && cleanScrapKey === fileMatchKey;
+                if (!log || log.used) return false;
+                const cleanScrapKey = getPureKey(log.matchKey || log.textContent);
+                return cleanScrapKey === fileMatchKey;
             });
         }
 
         if (!matchedLog) {
             matchedLog = scraperLogs.find(log => {
-                const cleanScrapKey = getPureKey(log.matchKey);
-                return !log.used && cleanScrapKey === fileMatchKey;
+                if (!log) return false;
+                return log.name === fileName;
             });
         }
 
@@ -165,9 +166,33 @@ function generatePreview(fileText, narrationName, includeChatter) {
     }
 }
 
+// 🎯 4. [다운로드] 버튼 클릭 이벤트 파트
 document.getElementById('download-btn').addEventListener('click', () => {
     if (!generatedHtmlBody) return;
 
     const htmlStyles = `
     <style>
-    .log-container { width: 100%; max-width: 800px; background-color: #1
+    .log-container { width: 100%; max-width: 800px; background-color: #1e1e1e; border-radius: 8px; padding: 20px !important; box-shadow: 0 4px 10px rgba(0,0,0,0.3); display: flex; flex-direction: column; gap: 12px; color: #e0e0e0; font-family: sans-serif; margin: 0 auto; }
+    .chat-row { display: flex; align-items: flex-start; position: relative; } 
+    .avatar-box{width:64px;height:64px;margin-right:15px;flex-shrink:0;background-color:#1a1a1a;border-radius:8px;overflow:hidden}
+    .avatar-box img{width:100%;height:100%;object-fit:contain}
+    .text-wrap { display: flex; flex-direction: column; flex-grow: 1; padding-right: 60px; } 
+    .char-name { font-weight: bold; font-size: 14px; margin-bottom: 6px; display: block; }
+    .bubbles-container { display: flex; flex-direction: column; gap: 4px; }
+    p.message-bubble { background-color: #141414; border-radius: 8px; padding: 8px 14px !important; font-size: 14px; line-height: 1.6; white-space: pre-wrap; word-break: break-all; color: #dddddd; margin: 0; width: fit-content; max-width: 100%; box-sizing: border-box; }
+    .narration-box { background-color: #2d2d2d; border-radius: 8px; padding: 10px 14px !important; font-size: 14px; line-height: 1.6; white-space: pre-wrap; word-break: break-all; color: #ffffff; text-align: center; width: 100%; box-sizing: border-box; margin: 2px 0; }
+    .tab-tag { position: absolute; top: 2px; right: 2px; display: inline-block; padding: 2px 6px; font-size: 10px; border-radius: 4px; background-color: #333; color: #aaa;}
+    </style>`;
+
+    const finalHtml = `<!DOCTYPE html><html lang="ko"><head><meta charset="UTF-8"><title>코코포리아 로그 정렬본</title>${htmlStyles}</head><body>${generatedHtmlBody}</body></html>`;
+
+    const blob = new Blob([finalHtml], { type: "text/html" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `cocofolia_ordered_log_${Date.now()}.html`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+});
