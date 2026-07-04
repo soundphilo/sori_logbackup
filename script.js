@@ -1,26 +1,25 @@
-// 💡 URL 파라미터에서 data(blobUrl) 주소를 낚아챕니다.
-const urlParams = new URLSearchParams(window.location.search);
-const dataBlobUrl = urlParams.get('data');
+// 외부(확장 프로그램)에서 날아오는 postMessage 신호를 대기합니다.
+window.addEventListener('message', function (event) {
+    // 우리가 정의한 고유 데이터 타입이 맞는지 확인
+    if (event.data && event.data.type === 'CCFOLIA_LOG_DATA') {
+        
+        // 1. 데이터를 잘 받았다고 상대방 창(확장 프로그램)에 알려 전송 루프를 멈춥니다.
+        event.source.postMessage({ type: 'CCFOLIA_DATA_RECEIVED' }, event.origin);
+        
+        // 2. 받아온 실데이터 파싱 후 화면 렌더링 시작
+        const finalOrderedLogs = event.data.payload;
+        renderPreview(finalOrderedLogs);
+    }
+});
 
-if (!dataBlobUrl) {
-    document.getElementById('output-wrapper').innerHTML = `<h3 class="error-msg">❌ 전달된 데이터가 없습니다. 확장 프로그램을 통해 접근해주세요.</h3>`;
-} else {
-    // 임시 주소(Blob URL)에 접속해서 JSON 데이터를 가져옵니다.
-    fetch(dataBlobUrl)
-        .then(response => response.json())
-        .then(finalOrderedLogs => {
-            renderPreview(finalOrderedLogs);
-            // 사용이 끝난 임시 주소는 메모리 해제
-            URL.revokeObjectURL(dataBlobUrl); 
-        })
-        .catch(err => {
-            document.getElementById('output-wrapper').innerHTML = `<h3 class="error-msg">❌ 데이터 로드 중 오류가 발생했습니다.</h3>`;
-            console.error(err);
-        });
-}
+// 데이터가 도착하기 전에 화면에 보여줄 임시 대기 메시지
+document.getElementById('output-wrapper').innerHTML = `
+    <h3 style="text-align: center; margin-top: 100px; color: #aaa;">
+        ⏳ 확장 프로그램에서 로그 데이터를 안정적으로 전송받는 중입니다... 잠시만 기다려주세요.
+    </h3>
+`;
 
-
-// 다운로드용 풀 HTML 소스 빌더
+// 최종 다운로드용 풀 HTML 소스 생성기
 function generatePureHtmlHtml(bodyContent) {
     const htmlStyles = `
 <style>
@@ -37,10 +36,10 @@ p.message-bubble { background-color: #141414; border-radius: 8px; padding: 8px 1
 .tab-tag { position: absolute; top: 2px; right: 2px; display: inline-block; padding: 2px 6px; font-size: 10px; border-radius: 4px; background-color: #333; color: #aaa;}
 </style>
     `;
-    return `<!DOCTYPE html><html lang="ko"><head><meta charset="UTF-8"><title>코코포리아 로그 백업 4.0</title>${htmlStyles}</head><body>${bodyContent}</body></html>`;
+    return `<!DOCTYPE html><html lang="ko"><head><meta charset=\"UTF-8\"><title>코코포리아 로그 백업 4.0</title>${htmlStyles}</head><body>${bodyContent}</body></html>`;
 }
 
-// 렌더링 및 이벤트 바인딩 함수
+// 데이터를 화면에 그리고 기능을 바인딩하는 함수
 function renderPreview(logs) {
     let htmlBody = `<div class="log-container">`;
     let currentGroup = null;
@@ -99,14 +98,18 @@ function renderPreview(logs) {
     }
     htmlBody += `</div>`;
 
-    // 1. 화면 미리보기에 레이아웃 주입
+    // 1. 화면의 대기 메시지를 지우고 파싱된 미리보기 배치
     document.getElementById('output-wrapper').innerHTML = htmlBody;
 
-    // 복사 및 다운로드용 최종 HTML 소스 생성
+    // 2. 외부 저장/복사용 최종 HTML 소스 코드 문자열 빌드
     const fullHtmlSource = generatePureHtmlHtml(htmlBody);
 
-    // 2. 다운로드 버튼 액션
-    document.getElementById('download-btn').addEventListener('click', () => {
+    // 3. 다운로드 버튼 액션 바인딩
+    const downloadBtn = document.getElementById('download-btn');
+    const newDownloadBtn = downloadBtn.cloneNode(true);
+    downloadBtn.parentNode.replaceChild(newDownloadBtn, downloadBtn);
+    
+    newDownloadBtn.addEventListener('click', () => {
         const blob = new Blob([fullHtmlSource], { type: "text/html" });
         const url = URL.createObjectURL(blob);
         const a = document.createElement("a");
@@ -118,13 +121,17 @@ function renderPreview(logs) {
         URL.revokeObjectURL(url);
     });
 
-    // 3. 클립보드 복사 버튼 액션
-    document.getElementById('copy-btn').addEventListener('click', async () => {
+    // 4. 클립보드 복사 버튼 액션 바인딩
+    const copyBtn = document.getElementById('copy-btn');
+    const newCopyBtn = copyBtn.cloneNode(true);
+    copyBtn.parentNode.replaceChild(newCopyBtn, copyBtn);
+
+    newCopyBtn.addEventListener('click', async () => {
         try {
             await navigator.clipboard.writeText(fullHtmlSource);
             alert("✨ HTML 전체 소스코드가 클립보드에 복사되었습니다!");
         } catch (err) {
-            alert("클립보드 복사에 실패했습니다. 보안 설정이나 권한을 확인하세요.");
+            alert("클립보드 복사에 실패했습니다.");
         }
     });
 }
