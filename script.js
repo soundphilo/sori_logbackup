@@ -2,6 +2,22 @@ let globScrapedLogs = null;
 let globIncludeChatter = false;
 let globLoadedFileText = ""; // 업로드된 파일 텍스트 임시 저장
 
+// 파일 업로드 감지 리스너
+document.getElementById('html-file-picker').addEventListener('change', (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+
+    // 파일 이름에서 확장자(.html, .txt 등)를 떼고 순수 이름만 추출하여 저장
+    globOriginFileName = file.name;
+
+    const reader = new FileReader();
+    reader.onload = function(evt) {
+        globLoadedFileText = evt.target.result;
+        processAndRender();
+    };
+    reader.readAsText(file, "UTF-8");
+});
+
 // 1. 확장 프로그램으로부터 순수 데이터 수신
 window.addEventListener('message', function (event) {
     if (event.data && event.data.type === 'CCFOLIA_RAW_DATA') {
@@ -174,16 +190,25 @@ function renderPreview(logs) {
     let htmlBody = `<div class="log-container">`;
     let currentGroup = null;
 
+    // 대사 그룹 마감 및 HTML 생성 함수
     function closeChatGroup(group) {
-        // ✨ [수정 2] 각각의 대사에 '＞' 문자가 있으면 주사위 전용 클래스(dice-bubble)를 추가하여 밝게 만듭니다.
-        let bubblesHtml = group.messages.map(msg => {
+        // 개별 말풍선 생성시 수정/삭제 버튼 및 식별용 데이터(index)를 심어줍니다.
+        let bubblesHtml = group.messages.map((msg, subIdx) => {
             const isDice = msg.includes('＞');
             const diceClass = isDice ? ' dice-bubble' : '';
-            return `<p class="message-bubble${diceClass}">${msg}</p>`;
+            
+            return `
+            <div class="bubble-wrapper" data-group-id="${group.id}" data-sub-idx="${subIdx}">
+                <p class="message-bubble${diceClass}">${msg}</p>
+                <div class="bubble-actions">
+                    <button class="action-mini-btn edit-btn">✏️ 수정</button>
+                    <button class="action-mini-btn delete-btn">❌ 삭제</button>
+                </div>
+            </div>`;
         }).join('');
 
         return `
-        <div class="chat-row">
+        <div class="chat-row" id="group-${group.id}">
             ${group.tagHtml || ''}
             <div class="avatar-box">${group.imgUrl ? `<img src="${group.imgUrl}">` : ''}</div>
             <div class="text-wrap">
@@ -193,54 +218,153 @@ function renderPreview(logs) {
         </div>`;
     }
 
+    // 각각의 그룹을 고유하게 식별하기 위한 카운터 변수
+    let groupIdCounter = 0;
+
     logs.forEach((log) => {
         const tagHtml = (log.tabName === '메인') ? '' : `<span class="tab-tag">${log.tabName}</span>`;
 
+        // 나레이션 이거나 시스템 메시지인 경우 처리
         if (log.isSystem || log.isNarration || log.name === "-") {
             if (currentGroup) { htmlBody += closeChatGroup(currentGroup); currentGroup = null; }
-            htmlBody += `<div class="chat-row">${tagHtml}<div class="narration-box">${log.message}</div></div>`;
+            
+            // 나레이션 구역도 수정/삭제가 가능하도록 구조화
+            groupIdCounter++;
+            htmlBody += `
+            <div class="chat-row" id="group-${groupIdCounter}">
+                ${tagHtml}
+                <div class="bubble-wrapper" data-group-id="${groupIdCounter}" data-sub-idx="0" style="width:100%;">
+                    <div class="narration-box">${log.message}</div>
+                    <div class="bubble-actions" style="position:absolute; right:10px; top:5px;">
+                        <button class="action-mini-btn edit-btn">✏️ 수정</button>
+                        <button class="action-mini-btn delete-btn">❌ 삭제</button>
+                    </div>
+                </div>
+            </div>`;
             return;
         }
 
+        // 일반 채팅 대사 연속 묶기 판정
         if (currentGroup && currentGroup.imgUrl === log.imgUrl && currentGroup.tabName === log.tabName && currentGroup.name === log.name) {
             currentGroup.messages.push(log.message);
         } else {
             if (currentGroup) htmlBody += closeChatGroup(currentGroup);
-            currentGroup = { imgUrl: log.imgUrl, tabName: log.tabName, name: log.name, color: log.color, tagHtml: tagHtml, messages: [log.message] };
+            groupIdCounter++;
+            currentGroup = { 
+                id: groupIdCounter,
+                imgUrl: log.imgUrl, 
+                tabName: log.tabName, 
+                name: log.name, 
+                color: log.color, 
+                tagHtml: tagHtml, 
+                messages: [log.message] 
+            };
         }
     });
 
     if (currentGroup) htmlBody += closeChatGroup(currentGroup);
     htmlBody += `</div>`;
 
-    document.getElementById('output-wrapper').innerHTML = htmlBody;
-    const fullHtmlSource = generatePureHtmlHtml(htmlBody);
+    // 1. 화면에 미리보기 출력
+    const wrapper = document.getElementById('output-wrapper');
+    wrapper.innerHTML = htmlBody;
 
-    // 버튼 활성화 및 기능 맵핑
-    const copyBtn = document.getElementById('copy-btn');
-    const downloadBtn = document.getElementById('download-btn');
+    // =======================================================
+    // ✨ [실시간 수정/삭제 이벤트 핸들러 빌드]
+    // =======================================================
     
-    copyBtn.disabled = false;
-    downloadBtn.disabled = false;
-
-    const newDownload = downloadBtn.cloneNode(true);
-    downloadBtn.parentNode.replaceChild(newDownload, downloadBtn);
-    newDownload.addEventListener('click', () => {
-        const blob = new Blob([fullHtmlSource], { type: "text/html" });
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement("a");
-        a.href = url;
-        a.download = `cocofolia_4.0_log_${Date.now()}.html`;
-        document.body.appendChild(a); a.click(); document.body.removeChild(a);
-        URL.revokeObjectURL(url);
+    // [삭제 버튼 클릭 처리]
+    wrapper.querySelectorAll('.delete-btn').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+            const wrapperDiv = e.target.closest('.bubble-wrapper');
+            const rowDiv = e.target.closest('.chat-row');
+            
+            // 화면에서 해당 말풍선 엘리먼트 즉시 삭제
+            wrapperDiv.remove();
+            
+            // 만약 캐릭터 대사 묶음 안에 말풍선이 하나도 안 남았다면 줄 자체를 삭제
+            const remainingBubbles = rowDiv.querySelectorAll('.bubble-wrapper');
+            if (remainingBubbles.length === 0) {
+                rowDiv.remove();
+            }
+            
+            // 소스코드 갱신 수집 리렌더링
+            updateFinalSource();
+        });
     });
 
-    const newCopy = copyBtn.cloneNode(true);
-    copyBtn.parentNode.replaceChild(newCopy, copyBtn);
-    newCopy.addEventListener('click', async () => {
-        try {
-            await navigator.clipboard.writeText(fullHtmlSource);
-            alert("✨ HTML 전체 소스코드가 클립보드에 복사되었습니다!");
-        } catch (err) { alert("클립보드 복사에 실패했습니다."); }
+    // [수정 버튼 클릭 처리]
+    wrapper.querySelectorAll('.edit-btn').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+            const wrapperDiv = e.target.closest('.bubble-wrapper');
+            // 나레이션 박스인지 일반 말풍선인지 판별하여 텍스트 타겟팅
+            const targetTextEl = wrapperDiv.querySelector('.message-bubble') || wrapperDiv.querySelector('.narration-box');
+            
+            const oldText = targetTextEl.innerText;
+            const newText = prompt("✏️ 수정할 내용을 입력하세요:", oldText);
+            
+            if (newText !== null && newText.trim() !== "") {
+                targetTextEl.innerText = newText.trim();
+                
+                // 만약 주사위 판정 기호(＞)가 생기거나 없어졌을 때 실시간 스타일 변형 반영
+                if (targetTextEl.classList.contains('message-bubble')) {
+                    if (newText.includes('＞')) {
+                        targetTextEl.classList.add('dice-bubble');
+                    } else {
+                        targetTextEl.classList.remove('dice-bubble');
+                    }
+                }
+                
+                // 소스코드 갱신 수집 리렌더링
+                updateFinalSource();
+            }
+        });
     });
+
+    // 최종 소스코드를 가공해서 다운로드/복사 버튼에 주입하는 내부 공유 함수
+    function updateFinalSource() {
+        // 복사나 저장용 파일에는 [수정], [삭제] 툴바 버튼들이 박히면 안되므로, 
+        // 화면의 컨테이너를 복제(Clone)해서 버튼 태그들만 다 떼어낸 깨끗한 코드 순수 추출 작업을 진행합니다.
+        const cloneContainer = wrapper.querySelector('.log-container').cloneNode(true);
+        
+        // 다운로드용 코드에서는 버튼 래퍼와 액션 버튼 전원 제거 및 태그 마감 처리
+        cloneContainer.querySelectorAll('.bubble-actions').forEach(el => el.remove());
+        
+        const cleanHtmlContent = cloneContainer.outerHTML;
+        const fullHtmlSource = generatePureHtmlHtml(cleanHtmlContent);
+
+        // 버튼 컴포넌트 기능 재매핑
+        const copyBtn = document.getElementById('copy-btn');
+        const downloadBtn = document.getElementById('download-btn');
+        
+        copyBtn.disabled = false;
+        downloadBtn.disabled = false;
+
+        const newDownload = downloadBtn.cloneNode(true);
+        downloadBtn.parentNode.replaceChild(newDownload, downloadBtn);
+        newDownload.addEventListener('click', () => {
+            const blob = new Blob([fullHtmlSource], { type: "text/html" });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement("a");
+            a.href = url;
+            
+            let finalFileName = globOriginFileName.replace(/\s*\[[\s\S]*$/, '').trim() || "cocofolia_processed_log";
+            a.download = `${finalFileName}.html`;
+            
+            document.body.appendChild(a); a.click(); document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+        });
+
+        const newCopy = copyBtn.cloneNode(true);
+        copyBtn.parentNode.replaceChild(newCopy, copyBtn);
+        newCopy.addEventListener('click', async () => {
+            try {
+                await navigator.clipboard.writeText(fullHtmlSource);
+                alert("✨ 수정한 내용이 반영된 HTML 전체 소스코드가 클립보드에 복사되었습니다!");
+            } catch (err) { alert("클립보드 복사에 실패했습니다."); }
+        });
+    }
+
+    // 첫 빌드 시점에 초기 소스코드 한 번 전역 주입
+    updateFinalSource();
 }
