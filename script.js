@@ -56,7 +56,6 @@ document.getElementById('html-file-picker').addEventListener('change', (e) => {
     const reader = new FileReader();
     reader.onload = function(evt) {
         globLoadedFileText = evt.target.result;
-        // 파일 로드되면 즉시 조합 및 정렬 프로세스 실행
         processAndRender();
     };
     reader.readAsText(file, "UTF-8");
@@ -69,11 +68,10 @@ document.getElementById('narration-select').addEventListener('change', () => {
     }
 });
 
-// 핵심 정렬 및 매칭 로직 (이전 3.0의 핵심 연산을 사이트로 안전 이식)
+// 핵심 정렬 및 매칭 로직
 function processAndRender() {
     if (!globScrapedLogs || !globLoadedFileText) return;
 
-    // 객체 깊은 복사로 매번 새로 매칭할 수 있게 초기화
     const scraperArray = JSON.parse(JSON.stringify(Object.values(globScrapedLogs)));
     const finalOrderedLogs = [];
     const narrationName = document.getElementById('narration-select').value;
@@ -96,6 +94,10 @@ function processAndRender() {
         let fileTab = fileTabRaw.toLowerCase();
         const fileName = logMatch[2].trim().replace(/<[^>]*>/g, '');
         let fileMessage = logMatch[3].trim().replace(/^\s+|\s+$/g, '');
+        
+        // ✨ [수정 1] 대사가 없는 빈 칸이거나 공백만 있다면 아바타 세트/나레이션 가릴 것 없이 아예 추가하지 않고 패스
+        if (!fileMessage) continue;
+
         const fileMatchKey = getPureKey(fileMessage);
 
         if (fileTab === 'main') fileTab = '메인';
@@ -160,6 +162,8 @@ body { background-color: #121212; margin: 0; padding: 20px; }
 .char-name { font-weight: bold; font-size: 14px; margin-bottom: 6px; display: block; }
 .bubbles-container { display: flex; flex-direction: column; gap: 4px; }
 p.message-bubble { background-color: #141414; border-radius: 8px; padding: 8px 14px !important; font-size: 14px; line-height: 1.6; white-space: pre-wrap; word-break: break-all; color: #dddddd; margin: 0; width: fit-content; max-width: 100%; box-sizing: border-box; }
+/* ✨ 주사위 전용 밝은 말풍선 스타일 */
+p.message-bubble.dice-bubble { background-color: #2a2a2a; color: #ffffff;}
 .narration-box { background-color: #2d2d2d; border-radius: 8px; padding: 10px 14px !important; font-size: 14px; line-height: 1.6; white-space: pre-wrap; word-break: break-all; color: #ffffff; text-align: center; width: 100%; box-sizing: border-box; margin: 2px 0; }
 .tab-tag { position: absolute; top: 2px; right: 2px; display: inline-block; padding: 2px 6px; font-size: 10px; border-radius: 4px; background-color: #333; color: #aaa;}
 </style>`;
@@ -171,7 +175,13 @@ function renderPreview(logs) {
     let currentGroup = null;
 
     function closeChatGroup(group) {
-        let bubblesHtml = group.messages.map(msg => `<p class="message-bubble">${msg}</p>`).join('');
+        // ✨ [수정 2] 각각의 대사에 '＞' 문자가 있으면 주사위 전용 클래스(dice-bubble)를 추가하여 밝게 만듭니다.
+        let bubblesHtml = group.messages.map(msg => {
+            const isDice = msg.includes('＞');
+            const diceClass = isDice ? ' dice-bubble' : '';
+            return `<p class="message-bubble${diceClass}">${msg}</p>`;
+        }).join('');
+
         return `
         <div class="chat-row">
             ${group.tagHtml || ''}
@@ -213,7 +223,6 @@ function renderPreview(logs) {
     copyBtn.disabled = false;
     downloadBtn.disabled = false;
 
-    // 기존 이벤트 제거 리플래시
     const newDownload = downloadBtn.cloneNode(true);
     downloadBtn.parentNode.replaceChild(newDownload, downloadBtn);
     newDownload.addEventListener('click', () => {
