@@ -1,25 +1,153 @@
-// 외부(확장 프로그램)에서 날아오는 postMessage 신호를 대기합니다.
+let globScrapedLogs = null;
+let globIncludeChatter = false;
+let globLoadedFileText = ""; // 업로드된 파일 텍스트 임시 저장
+
+// 1. 확장 프로그램으로부터 순수 데이터 수신
 window.addEventListener('message', function (event) {
-    // 우리가 정의한 고유 데이터 타입이 맞는지 확인
-    if (event.data && event.data.type === 'CCFOLIA_LOG_DATA') {
-        
-        // 1. 데이터를 잘 받았다고 상대방 창(확장 프로그램)에 알려 전송 루프를 멈춥니다.
+    if (event.data && event.data.type === 'CCFOLIA_RAW_DATA') {
         event.source.postMessage({ type: 'CCFOLIA_DATA_RECEIVED' }, event.origin);
         
-        // 2. 받아온 실데이터 파싱 후 화면 렌더링 시작
-        const finalOrderedLogs = event.data.payload;
-        renderPreview(finalOrderedLogs);
+        globScrapedLogs = event.data.payload.collectedLogs;
+        globIncludeChatter = event.data.payload.includeChatter;
+        
+        // 유저 선택 드롭다운 채우기
+        populateNarrationDropdown();
+        
+        document.getElementById('output-wrapper').innerHTML = `
+            <h3 style="text-align: center; margin-top: 100px; color: #4dadff;">
+                ✅ 데이터 수집 완료! 상단에서 [백업 파일 업로드]를 진행해 주세요.
+            </h3>
+        `;
     }
 });
 
-// 데이터가 도착하기 전에 화면에 보여줄 임시 대기 메시지
+// 대기 상태 기본 안내
 document.getElementById('output-wrapper').innerHTML = `
     <h3 style="text-align: center; margin-top: 100px; color: #aaa;">
-        ⏳ 확장 프로그램에서 로그 데이터를 안정적으로 전송받는 중입니다... 잠시만 기다려주세요.
+        ⏳ 확장 프로그램에서 추출 시작 버튼을 눌러주세요...
     </h3>
 `;
 
-// 최종 다운로드용 풀 HTML 소스 생성기
+// 나레이션 드롭다운 생성 함수
+function populateNarrationDropdown() {
+    const selectEl = document.getElementById('narration-select');
+    if (!globScrapedLogs) return;
+
+    const uniqueNames = Array.from(new Set(
+        Object.values(globScrapedLogs)
+        .map(log => log.name)
+        .filter(name => name && !["System", "시스템", "알 수 없음", "-"].includes(name))
+    ));
+
+    let dropdownOptions = `<option value="">-- 선택 안함 (지문 없음) --</option>`;
+    uniqueNames.forEach(name => {
+        dropdownOptions += `<option value="${name}">${name}</option>`;
+    });
+
+    selectEl.innerHTML = dropdownOptions;
+    selectEl.disabled = false; // 활성화
+}
+
+// 파일 업로드 감지 리스너
+document.getElementById('html-file-picker').addEventListener('change', (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = function(evt) {
+        globLoadedFileText = evt.target.result;
+        // 파일 로드되면 즉시 조합 및 정렬 프로세스 실행
+        processAndRender();
+    };
+    reader.readAsText(file, "UTF-8");
+});
+
+// 나레이션 드롭다운 값이 변경될 때마다 실시간으로 리렌더링 반영!
+document.getElementById('narration-select').addEventListener('change', () => {
+    if (globLoadedFileText) {
+        processAndRender();
+    }
+});
+
+// 핵심 정렬 및 매칭 로직 (이전 3.0의 핵심 연산을 사이트로 안전 이식)
+function processAndRender() {
+    if (!globScrapedLogs || !globLoadedFileText) return;
+
+    // 객체 깊은 복사로 매번 새로 매칭할 수 있게 초기화
+    const scraperArray = JSON.parse(JSON.stringify(Object.values(globScrapedLogs)));
+    const finalOrderedLogs = [];
+    const narrationName = document.getElementById('narration-select').value;
+
+    const pTagRegex = /<p[^>]*>([\s\S]*?)<\/p>/gi;
+    const spanRegex = /<span>\s*\[([^\]]+)\]\s*<\/span>\s*<span>\s*([\s\S]*?)\s*<\/span>\s*:\s*<span>\s*([\s\S]*?)\s*<\/span>/i;
+
+    const getPureKey = (text) => {
+        if (!text) return "";
+        return text.replace(/&#?[a-z0-9]+;/gi, '').replace(/<[^>]*>/g, '').replace(/[^\p{L}\p{N}]+/gu, '');
+    };
+
+    let match;
+    while ((match = pTagRegex.exec(globLoadedFileText)) !== null) {
+        const pContent = match[1].trim();
+        const logMatch = pContent.match(spanRegex);
+        if (!logMatch) continue;
+
+        let fileTabRaw = logMatch[1].trim();
+        let fileTab = fileTabRaw.toLowerCase();
+        const fileName = logMatch[2].trim().replace(/<[^>]*>/g, '');
+        let fileMessage = logMatch[3].trim().replace(/^\s+|\s+$/g, '');
+        const fileMatchKey = getPureKey(fileMessage);
+
+        if (fileTab === 'main') fileTab = '메인';
+        else if (fileTab === 'other') fileTab = '잡담';
+        else if (fileTab === 'info') fileTab = '정보';
+
+        if (!globIncludeChatter && fileTab === '잡담') continue;
+
+        let matchedLog = scraperArray.find(log => {
+            return !log.used && log.tabName === fileTab && log.name === fileName && getPureKey(log.matchKey) === fileMatchKey;
+        });
+        if (!matchedLog) {
+            matchedLog = scraperArray.find(log => {
+                return !log.used && log.name === fileName && getPureKey(log.matchKey) === fileMatchKey;
+            });
+        }
+        if (!matchedLog) {
+            matchedLog = scraperArray.find(log => {
+                return !log.used && getPureKey(log.matchKey) === fileMatchKey;
+            });
+        }
+
+        const isNarration = (narrationName && fileName === narrationName.trim());
+        const isSystem = ["System", "시스템", "system"].includes(fileName);
+
+        if (matchedLog) {
+            matchedLog.used = true;
+            finalOrderedLogs.push({
+                tabName: fileTab,
+                name: matchedLog.name,
+                imgUrl: matchedLog.imgUrl,
+                message: fileMessage,
+                color: matchedLog.color,
+                isNarration: isNarration,
+                isSystem: isSystem
+            });
+        } else {
+            finalOrderedLogs.push({
+                tabName: fileTab,
+                name: fileName,
+                imgUrl: "",
+                message: fileMessage,
+                color: (fileName === "-" || isSystem) ? "#888888" : "#b4b4b4",
+                isNarration: isNarration,
+                isSystem: isSystem
+            });
+        }
+    }
+
+    renderPreview(finalOrderedLogs);
+}
+
 function generatePureHtmlHtml(bodyContent) {
     const htmlStyles = `
 <style>
@@ -34,32 +162,23 @@ body { background-color: #121212; margin: 0; padding: 20px; }
 p.message-bubble { background-color: #141414; border-radius: 8px; padding: 8px 14px !important; font-size: 14px; line-height: 1.6; white-space: pre-wrap; word-break: break-all; color: #dddddd; margin: 0; width: fit-content; max-width: 100%; box-sizing: border-box; }
 .narration-box { background-color: #2d2d2d; border-radius: 8px; padding: 10px 14px !important; font-size: 14px; line-height: 1.6; white-space: pre-wrap; word-break: break-all; color: #ffffff; text-align: center; width: 100%; box-sizing: border-box; margin: 2px 0; }
 .tab-tag { position: absolute; top: 2px; right: 2px; display: inline-block; padding: 2px 6px; font-size: 10px; border-radius: 4px; background-color: #333; color: #aaa;}
-</style>
-    `;
-    return `<!DOCTYPE html><html lang="ko"><head><meta charset=\"UTF-8\"><title>코코포리아 로그 백업 4.0</title>${htmlStyles}</head><body>${bodyContent}</body></html>`;
+</style>`;
+    return `<!DOCTYPE html><html lang="ko"><head><meta charset="UTF-8"><title>코코포리아 로그 백업 4.0</title>${htmlStyles}</head><body>${bodyContent}</body></html>`;
 }
 
-// 데이터를 화면에 그리고 기능을 바인딩하는 함수
 function renderPreview(logs) {
     let htmlBody = `<div class="log-container">`;
     let currentGroup = null;
 
     function closeChatGroup(group) {
         let bubblesHtml = group.messages.map(msg => `<p class="message-bubble">${msg}</p>`).join('');
-        const avatarHtml = group.imgUrl ? `<img src="${group.imgUrl}">` : '';
-        const renderTag = group.tagHtml ? group.tagHtml : '';
-        
         return `
         <div class="chat-row">
-            ${renderTag}
-            <div class="avatar-box">
-                ${avatarHtml}
-            </div>
+            ${group.tagHtml || ''}
+            <div class="avatar-box">${group.imgUrl ? `<img src="${group.imgUrl}">` : ''}</div>
             <div class="text-wrap">
                 <span class="char-name" style="color:${group.color}">${group.name}</span>
-                <div class="bubbles-container">
-                    ${bubblesHtml}
-                </div>
+                <div class="bubbles-container">${bubblesHtml}</div>
             </div>
         </div>`;
     }
@@ -68,10 +187,7 @@ function renderPreview(logs) {
         const tagHtml = (log.tabName === '메인') ? '' : `<span class="tab-tag">${log.tabName}</span>`;
 
         if (log.isSystem || log.isNarration || log.name === "-") {
-            if (currentGroup) {
-                htmlBody += closeChatGroup(currentGroup);
-                currentGroup = null;
-            }
+            if (currentGroup) { htmlBody += closeChatGroup(currentGroup); currentGroup = null; }
             htmlBody += `<div class="chat-row">${tagHtml}<div class="narration-box">${log.message}</div></div>`;
             return;
         }
@@ -79,59 +195,43 @@ function renderPreview(logs) {
         if (currentGroup && currentGroup.imgUrl === log.imgUrl && currentGroup.tabName === log.tabName && currentGroup.name === log.name) {
             currentGroup.messages.push(log.message);
         } else {
-            if (currentGroup) {
-                htmlBody += closeChatGroup(currentGroup);
-            }
-            currentGroup = {
-                imgUrl: log.imgUrl,
-                tabName: log.tabName,
-                name: log.name,
-                color: log.color,
-                tagHtml: tagHtml,
-                messages: [log.message]
-            };
+            if (currentGroup) htmlBody += closeChatGroup(currentGroup);
+            currentGroup = { imgUrl: log.imgUrl, tabName: log.tabName, name: log.name, color: log.color, tagHtml: tagHtml, messages: [log.message] };
         }
     });
 
-    if (currentGroup) {
-        htmlBody += closeChatGroup(currentGroup);
-    }
+    if (currentGroup) htmlBody += closeChatGroup(currentGroup);
     htmlBody += `</div>`;
 
-    // 1. 화면의 대기 메시지를 지우고 파싱된 미리보기 배치
     document.getElementById('output-wrapper').innerHTML = htmlBody;
-
-    // 2. 외부 저장/복사용 최종 HTML 소스 코드 문자열 빌드
     const fullHtmlSource = generatePureHtmlHtml(htmlBody);
 
-    // 3. 다운로드 버튼 액션 바인딩
+    // 버튼 활성화 및 기능 맵핑
+    const copyBtn = document.getElementById('copy-btn');
     const downloadBtn = document.getElementById('download-btn');
-    const newDownloadBtn = downloadBtn.cloneNode(true);
-    downloadBtn.parentNode.replaceChild(newDownloadBtn, downloadBtn);
     
-    newDownloadBtn.addEventListener('click', () => {
+    copyBtn.disabled = false;
+    downloadBtn.disabled = false;
+
+    // 기존 이벤트 제거 리플래시
+    const newDownload = downloadBtn.cloneNode(true);
+    downloadBtn.parentNode.replaceChild(newDownload, downloadBtn);
+    newDownload.addEventListener('click', () => {
         const blob = new Blob([fullHtmlSource], { type: "text/html" });
         const url = URL.createObjectURL(blob);
         const a = document.createElement("a");
         a.href = url;
         a.download = `cocofolia_4.0_log_${Date.now()}.html`;
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
+        document.body.appendChild(a); a.click(); document.body.removeChild(a);
         URL.revokeObjectURL(url);
     });
 
-    // 4. 클립보드 복사 버튼 액션 바인딩
-    const copyBtn = document.getElementById('copy-btn');
-    const newCopyBtn = copyBtn.cloneNode(true);
-    copyBtn.parentNode.replaceChild(newCopyBtn, copyBtn);
-
-    newCopyBtn.addEventListener('click', async () => {
+    const newCopy = copyBtn.cloneNode(true);
+    copyBtn.parentNode.replaceChild(newCopy, copyBtn);
+    newCopy.addEventListener('click', async () => {
         try {
             await navigator.clipboard.writeText(fullHtmlSource);
             alert("✨ HTML 전체 소스코드가 클립보드에 복사되었습니다!");
-        } catch (err) {
-            alert("클립보드 복사에 실패했습니다.");
-        }
+        } catch (err) { alert("클립보드 복사에 실패했습니다."); }
     });
 }
