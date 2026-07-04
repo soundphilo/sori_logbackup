@@ -2,59 +2,170 @@
 <html lang="ko">
 <head>
     <meta charset="UTF-8">
-    <title>코코포리아 로그 정렬 뷰어</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>코코포리아 로그 변환기 4.0 - 미리보기</title>
     <style>
-        body { background-color: #121212; color: #e0e0e0; font-family: sans-serif; padding: 20px; }
-        .control-panel { max-width: 800px; margin: 0 auto 20px auto; background: #1e1e1e; padding: 20px; border-radius: 8px; box-shadow: 0 4px 6px rgba(0,0,0,0.2); }
-        .input-group { margin-bottom: 15px; display: flex; flex-direction: column; gap: 5px; }
-        textarea, input[type="text"] { background: #2a2a2a; color: #fff; border: 1px solid #444; padding: 10px; border-radius: 4px; }
-        .btn-container { display: flex; gap: 10px; margin-top: 15px; }
-        button { background: #2196f3; color: white; border: none; padding: 10px 15px; border-radius: 4px; cursor: pointer; font-weight: bold; }
-        button:hover { background: #1976d2; }
-        #download-btn { background: #4caf50; }
-        #download-btn:hover { background: #388e3c; }
-        #copy-code-btn { background: #9c27b0; }
-        #copy-code-btn:hover { background: #7b1fa2; }
-        #status { font-weight: bold; margin-bottom: 15px; }
+        body { background-color: #121212; color: #e0e0e0; font-family: sans-serif; margin: 0; padding: 0; }
+        /* 상단 고정 툴바 */
+        .toolbar { position: fixed; top: 0; left: 0; right: 0; height: 60px; background: #222; display: flex; align-items: center; justify-content: space-between; padding: 0 20px; box-shadow: 0 2px 10px rgba(0,0,0,0.5); z-index: 100; }
+        .toolbar h2 { margin: 0; font-size: 18px; color: #4dadff; }
+        .btn-group { display: flex; gap: 10px; }
+        .btn { border: none; padding: 10px 18px; border-radius: 4px; font-weight: bold; cursor: pointer; font-size: 14px; transition: 0.2s; }
+        .btn-download { background: #4dadff; color: #121212; }
+        .btn-download:hover { background: #3594e6; }
+        .btn-copy { background: #333; color: #fff; border: 1px solid #555; }
+        .btn-copy:hover { background: #444; }
+        
+        /* 미리보기 컨테이너 영역 */
+        .preview-area { margin-top: 80px; padding: 20px; }
+        
+        /* 3.0 버전 내장 디자인 컴포넌트 이식 */
+        .log-container { width: 100%; max-width: 800px; background-color: #1e1e1e; border-radius: 8px; padding: 20px !important; box-shadow: 0 4px 10px rgba(0,0,0,0.3); display: flex; flex-direction: column; gap: 12px; color: #e0e0e0; font-family: sans-serif; margin: 0 auto; }
+        .chat-row { display: flex; align-items: flex-start; position: relative; } 
+        .avatar-box{width:64px;height:64px;margin-right:15px;flex-shrink:0;background-color:#1a1a1a;border-radius:8px;overflow:hidden}
+        .avatar-box img{width:100%;height:100%;object-fit:contain}
+        .text-wrap { display: flex; flex-direction: column; flex-grow: 1; padding-right: 60px; } 
+        .char-name { font-weight: bold; font-size: 14px; margin-bottom: 6px; display: block; }
+        .bubbles-container { display: flex; flex-direction: column; gap: 4px; }
+        p.message-bubble { background-color: #141414; border-radius: 8px; padding: 8px 14px !important; font-size: 14px; line-height: 1.6; white-space: pre-wrap; word-break: break-all; color: #dddddd; margin: 0; width: fit-content; max-width: 100%; box-sizing: border-box; }
+        .narration-box { background-color: #2d2d2d; border-radius: 8px; padding: 10px 14px !important; font-size: 14px; line-height: 1.6; white-space: pre-wrap; word-break: break-all; color: #ffffff; text-align: center; width: 100%; box-sizing: border-box; margin: 2px 0; }
+        .tab-tag { position: absolute; top: 2px; right: 2px; display: inline-block; padding: 2px 6px; font-size: 10px; border-radius: 4px; background-color: #333; color: #aaa;}
+        
+        .error-msg { text-align: center; margin-top: 100px; color: #ff6b6b; }
     </style>
 </head>
 <body>
 
-<div class="control-panel">
-    <h2>코코포리아 백업 로그 변환기</h2>
-    <div id="status">ℹ️ 코코포리아에서 추출을 완료한 뒤, 아래 상자에 Ctrl+V를 해주세요.</div>
-    
-    <div class="input-group">
-        <label>1. 확장 프로그램 데이터 붙여넣기 (Ctrl+V)</label>
-        <textarea id="scraper-input" rows="3" placeholder="확장 프로그램 실행 후 복사된 텍스트를 여기에 붙여넣으세요..."></textarea>
+    <div class="toolbar">
+        <h2>🛠️ 로그 변환기 4.0 미리보기</h2>
+        <div class="btn-group">
+            <button class="btn btn-copy" id="copy-btn">📋 HTML 코드 복사</button>
+            <button class="btn btn-download" id="download-btn">💾 HTML 파일 다운로드</button>
+        </div>
     </div>
 
-    <div class="input-group">
-        <label>2. 코코포리아 백업 HTML 파일 선택</label>
-        <input type="file" id="log-file" accept=".html">
+    <div class="preview-area">
+        <div id="output-wrapper"></div>
     </div>
 
-    <div class="input-group">
-        <label>3. 나레이션 처리할 캐릭터 이름 (선택)</label>
-        <input type="text" id="narration-name" placeholder="예: 시스템 또는 나레이터">
-    </div>
+    <script>
+        // 확장 프로그램이 열어주면서 sessionStorage에 담아둔 데이터 파싱
+        const rawData = sessionStorage.getItem('ccfolia_ordered_logs');
+        
+        if (!rawData) {
+            document.getElementById('output-wrapper').innerHTML = `<h3 class="error-msg">❌ 전달된 데이터가 없습니다. 확장 프로그램을 통해 접근해주세요.</h3>`;
+        } else {
+            const finalOrderedLogs = JSON.parse(rawData);
+            renderPreview(finalOrderedLogs);
+        }
 
-    <div class="input-group" style="flex-direction: row; align-items: center; gap: 10px;">
-        <input type="checkbox" id="include-chatter" checked>
-        <label for="include-chatter">잡담 탭 내용 포함하기</label>
-    </div>
+        // 3.0 빌더 기반 렌더링 엔진 생성
+        function generatePureHtmlHtml(bodyContent) {
+            const htmlStyles = `
+    <style>
+    body { background-color: #121212; margin: 0; padding: 20px; }
+    .log-container { width: 100%; max-width: 800px; background-color: #1e1e1e; border-radius: 8px; padding: 20px !important; box-shadow: 0 4px 10px rgba(0,0,0,0.3); display: flex; flex-direction: column; gap: 12px; color: #e0e0e0; font-family: sans-serif; margin: 0 auto; }
+    .chat-row { display: flex; align-items: flex-start; position: relative; } 
+    .avatar-box{width:64px;height:64px;margin-right:15px;flex-shrink:0;background-color:#1a1a1a;border-radius:8px;overflow:hidden}
+    .avatar-box img{width:100%;height:100%;object-fit:contain}
+    .text-wrap { display: flex; flex-direction: column; flex-grow: 1; padding-right: 60px; } 
+    .char-name { font-weight: bold; font-size: 14px; margin-bottom: 6px; display: block; }
+    .bubbles-container { display: flex; flex-direction: column; gap: 4px; }
+    p.message-bubble { background-color: #141414; border-radius: 8px; padding: 8px 14px !important; font-size: 14px; line-height: 1.6; white-space: pre-wrap; word-break: break-all; color: #dddddd; margin: 0; width: fit-content; max-width: 100%; box-sizing: border-box; }
+    .narration-box { background-color: #2d2d2d; border-radius: 8px; padding: 10px 14px !important; font-size: 14px; line-height: 1.6; white-space: pre-wrap; word-break: break-all; color: #ffffff; text-align: center; width: 100%; box-sizing: border-box; margin: 2px 0; }
+    .tab-tag { position: absolute; top: 2px; right: 2px; display: inline-block; padding: 2px 6px; font-size: 10px; border-radius: 4px; background-color: #333; color: #aaa;}
+    </style>
+            `;
+            return `<!DOCTYPE html><html lang="ko"><head><meta charset="UTF-8"><title>코코포리아 로그 백업 4.0</title>${htmlStyles}</head><body>${bodyContent}</body></html>`;
+        }
 
-    <div class="btn-container">
-        <button id="preview-btn">정렬 및 미리보기 생성</button>
-        <button id="download-btn">HTML 파일 다운로드</button>
-        <button id="copy-code-btn">HTML 코드 클립보드 복사</button> </div>
-</div>
+        function renderPreview(logs) {
+            let htmlBody = `<div class="log-container">`;
+            let currentGroup = null;
 
-<div id="preview-area" style="display:none; max-width:800px; margin: 0 auto;">
-    <h3>미리보기 화면</h3>
-    <div id="preview-container"></div>
-</div>
+            function closeChatGroup(group) {
+                let bubblesHtml = group.messages.map(msg => `<p class="message-bubble">${msg}</p>`).join('');
+                const avatarHtml = group.imgUrl ? `<img src="${group.imgUrl}">` : '';
+                const renderTag = group.tagHtml ? group.tagHtml : '';
+                
+                return `
+                <div class="chat-row">
+                    ${renderTag}
+                    <div class="avatar-box">
+                        ${avatarHtml}
+                    </div>
+                    <div class="text-wrap">
+                        <span class="char-name" style="color:${group.color}">${group.name}</span>
+                        <div class="bubbles-container">
+                            ${bubblesHtml}
+                        </div>
+                    </div>
+                </div>`;
+            }
 
-<script src="script.js"></script>
+            logs.forEach((log) => {
+                const tagHtml = (log.tabName === '메인') ? '' : `<span class="tab-tag">${log.tabName}</span>`;
+
+                if (log.isSystem || log.isNarration || log.name === "-") {
+                    if (currentGroup) {
+                        htmlBody += closeChatGroup(currentGroup);
+                        currentGroup = null;
+                    }
+                    htmlBody += `<div class="chat-row">${tagHtml}<div class="narration-box">${log.message}</div></div>`;
+                    return;
+                }
+
+                if (currentGroup && currentGroup.imgUrl === log.imgUrl && currentGroup.tabName === log.tabName && currentGroup.name === log.name) {
+                    currentGroup.messages.push(log.message);
+                } else {
+                    if (currentGroup) {
+                        htmlBody += closeChatGroup(currentGroup);
+                    }
+                    currentGroup = {
+                        imgUrl: log.imgUrl,
+                        tabName: log.tabName,
+                        name: log.name,
+                        color: log.color,
+                        tagHtml: tagHtml,
+                        messages: [log.message]
+                    };
+                }
+            });
+
+            if (currentGroup) {
+                htmlBody += closeChatGroup(currentGroup);
+            }
+            htmlBody += `</div>`;
+
+            // 1. 화면 미리보기에 뿌려주기
+            document.getElementById('output-wrapper').innerHTML = htmlBody;
+
+            // 최종 종합 풀소스 구성
+            const fullHtmlSource = generatePureHtmlHtml(htmlBody);
+
+            // 2. 다운로드 버튼 액션 핸들링
+            document.getElementById('download-btn').addEventListener('click', () => {
+                const blob = new Blob([fullHtmlSource], { type: "text/html" });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement("a");
+                a.href = url;
+                a.download = `cocofolia_4.0_log_${Date.now()}.html`;
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                URL.revokeObjectURL(url);
+            });
+
+            // 3. 클립보드 복사 버튼 액션 핸들링
+            document.getElementById('copy-btn').addEventListener('click', async () => {
+                try {
+                    await navigator.clipboard.writeText(fullHtmlSource);
+                    alert("✨ HTML 전체 소스코드가 클립보드에 복사되었습니다!");
+                } catch (err) {
+                    alert("클립보드 복사에 실패했습니다. 구형 브라우저 혹은 권한 설정을 확인하세요.");
+                }
+            });
+        }
+    </script>
 </body>
 </html>
