@@ -4,11 +4,12 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Sori CCFolia Backup</title>
-    
     <link rel="icon" type="image/png" href="fav.png">
 
     <style>
-        /* 1. 전체 기본 스튜디오 배경 테마 */
+        /* ==========================================
+           [1] 작업실 웹사이트 전용 다크 스튜디오 테마
+        ========================================== */
         body { 
             background-color: #0f111a; 
             color: #f1f1f4; 
@@ -18,7 +19,7 @@
             letter-spacing: -0.3px;
         }
 
-        /* 2. 상단 글래스모피즘 툴바 구역 */
+        /* 상단 고정 툴바 구역 */
         .toolbar { 
             position: fixed; 
             top: 0; 
@@ -48,7 +49,7 @@
             letter-spacing: 0.5px;
         }
         
-        /* 3. 컨트롤러 배치 그룹 */
+        /* 컨트롤러 배치 그룹 */
         .controls-group { 
             display: flex; 
             align-items: center; 
@@ -130,51 +131,42 @@
         }
         
         .btn:disabled {
-            background: #1b1e2e !important;
-            color: #4a4f6e !important;
-            border: 1px solid #25283d !important;
-            box-shadow: none !important;
-            transform: none !important;
+            background: #1b1e2e;
+            color: #4a4f6e;
+            border: 1px solid #25283d;
+            box-shadow: none;
+            transform: none;
             cursor: not-allowed;
         }
         
-        /* 4. 작업 영역 전체 배치 레이아웃 */
+        /* 작업 영역 전체 배치 레이아웃 */
         .preview-area { 
-            margin-top: 110px; 
+            margin-top: 100px; 
             padding: 20px; 
             display: flex;
             justify-content: center;
         }
 
-        /* ⚠️ 기존 스크립트 본연의 레이아웃을 100% 띄워주기 위해 불필요한 속성 전면 제거 */
         #output-wrapper {
             width: 100%;
             max-width: 850px;
             box-sizing: border-box;
         }
 
-        /* 대기 중/안내용 문구 h3 전용 다크 카드 테마 설정 */
+        /* 대기 중/안내용 문구 h3용 스타일 */
         #output-wrapper h3 {
             font-size: 14px;
             font-weight: 500;
             background-color: #151722;
-            padding: 40px 20px !important;
+            padding: 40px 20px;
             border-radius: 12px;
             border: 1px dashed rgba(77, 173, 255, 0.3);
             box-shadow: 0 10px 30px rgba(0,0,0,0.3);
+            text-align: center;
             letter-spacing: 0.5px;
         }
 
-        /* 🚀 [순정 복구의 핵심] 자바스크립트 내부 스타일링과 엉키지 않도록 최소한의 테마만 오버레이 */
-        #output-wrapper .log-container {
-            background-color: #151722 !important; /* 작업실 배경에 맞춘 다크룸 스킨 배경화면 처리 */
-            border-radius: 12px !important;
-            padding: 30px !important;
-            box-shadow: 0 10px 40px rgba(0,0,0,0.5) !important;
-            border: 1px solid rgba(255, 255, 255, 0.04) !important;
-        }
-
-        /* 🛠️ 실시간 수정/삭제 버튼을 원래 말풍선 훼손 없이 우측에 띄워주는 스타일링 */
+        /* 실시간 수정/삭제 버튼 조작을 위한 절대 좌표 처리 */
         .bubble-wrapper {
             position: relative;
             display: flex;
@@ -186,29 +178,26 @@
             display: flex; 
             gap: 6px; 
             opacity: 0; 
-            transform: translateX(-5px); 
             transition: all 0.2s ease;
             position: absolute;
-            right: 0;
+            right: 10px;
             top: 50%;
-            transform: translateY(-50%) translateX(10px);
-            z-index: 50;
+            transform: translateY(-50%);
+            z-index: 100;
         }
         
         .bubble-wrapper:hover .bubble-actions { 
             opacity: 1; 
-            transform: translateY(-50%) translateX(0); 
         }
         
         .action-mini-btn { 
-            background: #1e2235; 
+            background: #252940; 
             color: #8f95b2; 
-            border: 1px solid #333955; 
+            border: 1px solid #3b4260; 
             padding: 4px 8px; 
             border-radius: 5px; 
             font-size: 11px; 
             cursor: pointer; 
-            font-family: inherit;
         }
         .action-mini-btn:hover { 
             color: #ffffff; 
@@ -219,37 +208,32 @@
             border-color: #ef4444; 
             color: #fca5a5; 
         }
-    </style>
-</head>
-<body>
 
-    <div class="toolbar">
-        <h2>Sori CCFolia Backup</h2>
+
+        /* ==========================================
+           [2] 순정 로그 스킨 백업 스타일
+           (다운로드 결과물 디자인 원본 유지 - 과도한 !important 정리)
+        ========================================== */
+        .log-container { 
+            width: 100%; 
+            max-width: 800px; 
+            background-color: #1e1e1e; 
+            border-radius: 8px; 
+            padding: 20px; 
+            box-shadow: 0 4px 10px rgba(0,0,0,0.3); 
+            display: flex; 
+            flex-direction: column; 
+            gap: 12px; 
+            color: #e0e0e0; 
+            font-family: sans-serif; 
+            margin: 20px auto; 
+            box-sizing: border-box;
+        }
+        .chat-row { display: flex; align-items: flex-start; position: relative; margin: 0; padding: 0; } 
+        .avatar-box { width: 64px; height: 64px; margin-right: 15px; flex-shrink: 0; background-color: #1a1a1a; border-radius: 8px; overflow: hidden; }
+        .avatar-box img { width: 100%; height: 100%; object-fit: contain; margin: 0; padding: 0; }
+        .text-wrap { display: flex; flex-grow: 1; padding-right: 120px; } 
+        .char-name { font-weight: bold; font-size: 14px; margin-bottom: 6px; display: block; }
+        .bubbles-container { display: flex; flex-direction: column; gap: 4px; width: 100%; }
         
-        <div class="controls-group">
-            <div class="control-item">
-                <strong>1. 백업 파일 업로드</strong>
-                <input type="file" id="html-file-picker" accept=".html,.txt">
-            </div>
-            
-            <div class="control-item">
-                <strong>2. 나레이션 캐릭터 지정</strong>
-                <select id="narration-select" disabled>
-                    <option value="">-- 파일 먼저 업로드 --</option>
-                </select>
-            </div>
-        </div>
-
-        <div class="btn-group">
-            <button class="btn btn-copy" id="copy-btn" disabled>📋 HTML 복사</button>
-            <button class="btn btn-download" id="download-btn" disabled>💾 다운로드</button>
-        </div>
-    </div>
-
-    <div class="preview-area">
-        <div id="output-wrapper"></div>
-    </div>
-
-    <script src="script.js"></script>
-</body>
-</html>
+        /* 자바스크립트가 인라인 스타일로 오버라이딩하는 속성을 방해하지 않기 위해 최소
