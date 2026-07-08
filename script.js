@@ -1,302 +1,370 @@
-<!DOCTYPE html>
-<html lang="ko">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Sori CCFolia Backup</title>
-    <link rel="icon" type="image/png" href="fav.png">
-    <style>
-        /* ==========================================
-           [1] 순정 스타일 뼈대 (한 글자도 수정 없음)
-        ========================================== */
-        body { background-color: #0f111a; color: #e0e0e0; font-family: sans-serif; margin: 0; padding: 0; }
-        
-        /* 프리뷰 영역 배치 */
-        .preview-area { margin-top: 100px; padding: 20px; }
-        
-        .log-container { width: 100%; max-width: 800px; background-color: #1e1e1e; border-radius: 8px; padding: 20px !important; box-shadow: 0 4px 10px rgba(0,0,0,0.3); display: flex; flex-direction: column; gap: 12px; color: #e0e0e0; font-family: sans-serif; margin: 0 auto; }
-        .chat-row { display: flex; align-items: flex-start; position: relative; } 
-        .avatar-box{width:64px;height:64px;margin-right:15px;flex-shrink:0;background-color:#1a1a1a;border-radius:8px;overflow:hidden}
-        .avatar-box img{width:100%;height:100%;object-fit:contain}
-        .text-wrap { display: flex; flex-direction: column; flex-grow: 1; padding-right: 60px; } 
-        .char-name { font-weight: bold; font-size: 14px; margin-bottom: 6px; display: block; }
-        .bubbles-container { display: flex; flex-direction: column; gap: 4px; }
-        p.message-bubble { background-color: #141414; border-radius: 8px; padding: 8px 14px !important; font-size: 14px; line-height: 1.6; white-space: pre-wrap; word-break: break-all; color: #dddddd; margin: 0; width: fit-content; max-width: 100%; box-sizing: border-box; }
-        .narration-box { background-color: #2d2d2d; border-radius: 8px; padding: 10px 14px !important; font-size: 14px; line-height: 1.6; white-space: pre-wrap; word-break: break-all; color: #ffffff; text-align: center; width: 100%; box-sizing: border-box; margin: 2px 0; }
-        .tab-tag { position: absolute; top: 2px; right: 2px; display: inline-block; padding: 2px 6px; font-size: 10px; border-radius: 4px; background-color: #333; color: #aaa;}
-        
-        p.message-bubble { position: relative; group: hover; }
-        .bubble-wrapper { position: relative; display: flex; align-items: center; gap: 8px; max-width: 100%; }
-        .bubble-actions { display: flex; gap: 4px; opacity: 0; transition: opacity 0.2s; }
-        .bubble-wrapper:hover .bubble-actions { opacity: 1; }
-        
-        .action-mini-btn { background: #252940; color: #8f95b2; border: 1px solid #3b4260; padding: 2px 6px; border-radius: 4px; font-size: 11px; cursor: pointer; transition: 0.1s; }
-        .action-mini-btn:hover { color: #fff; background: #4dadff; border-color: #4dadff; }
-        .action-mini-btn.delete-btn:hover { background: #901a1a; border-color: #ff4d4d; color: #fff; }
+let globScrapedLogs = null;
+let globIncludeChatter = false;
+let globLoadedFileText = ""; // 업로드된 파일 텍스트 임시 저장
 
-        /* ==========================================
-           [2] 상단 고정 툴바 구역 세련된 UI 껍데기 적용
-        ========================================== */
-        .toolbar { 
-            position: fixed; 
-            top: 0; 
-            left: 0; 
-            right: 0; 
-            height: 80px; 
-            background: rgba(24, 28, 41, 0.9); 
-            backdrop-filter: blur(12px);
-            -webkit-backdrop-filter: blur(12px);
-            display: flex; 
-            align-items: center; 
-            justify-content: space-between; 
-            padding: 0 40px; 
-            box-shadow: 0 4px 30px rgba(0, 0, 0, 0.4); 
-            border-bottom: 1px solid rgba(255, 255, 255, 0.06);
-            z-index: 1000; 
-            box-sizing: border-box;
-        }
-        
-        .toolbar h2 { 
-            margin: 0; 
-            font-size: 18px; 
-            font-weight: 800;
-            background: linear-gradient(135deg, #4dadff, #7df9ff);
-            -webkit-background-clip: text;
-            -webkit-text-fill-color: transparent;
-            text-shadow: 0 2px 10px rgba(77, 173, 255, 0.2);
-            letter-spacing: 0.5px;
-        }
-        
-        .controls-group { display: flex; align-items: center; gap: 24px; }
-        .control-item { display: flex; flex-direction: column; gap: 6px; font-size: 11px; color: #8f95b2; }
-        .control-item strong { color: #fff; font-size: 12px; font-weight: 600; letter-spacing: 0.5px; }
-        
-        select, input[type="file"] { 
-            background: #1e2235; 
-            color: #ffffff; 
-            border: 1px solid #333955; 
-            padding: 8px 14px; 
-            border-radius: 6px; 
-            font-size: 12px; 
-            outline: none;
-            transition: all 0.2s ease;
-        }
-        select:focus, input[type="file"]:hover { border-color: #4dadff; box-shadow: 0 0 8px rgba(77, 173, 255, 0.25); }
-        select:disabled { background: #141622; color: #555a77; border-color: #222538; cursor: not-allowed; }
-        
-        .btn-group { display: flex; gap: 12px; }
-        .btn { border: none; padding: 10px 18px; border-radius: 6px; font-weight: 600; cursor: pointer; font-size: 12px; transition: all 0.25s ease; display: inline-flex; align-items: center; gap: 6px; }
-        
-        .btn-download { background: linear-gradient(135deg, #4dadff, #2575fc); color: #ffffff; box-shadow: 0 4px 15px rgba(77, 173, 255, 0.3); }
-        .btn-download:hover:not(:disabled) { transform: translateY(-2px); box-shadow: 0 6px 20px rgba(77, 173, 255, 0.45); }
-        
-        .btn-copy { background: #252940; color: #e2e8f0; border: 1px solid #3b4260; }
-        .btn-copy:hover:not(:disabled) { background: #2e3454; color: #ffffff; border-color: #4dadff; }
-        
-        .btn:disabled { background: #1b1e2e; color: #4a4f6e; border: 1px solid #25283d; box-shadow: none; transform: none; cursor: not-allowed; }
+// 파일 업로드 감지 리스너
+document.getElementById('html-file-picker').addEventListener('change', (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
 
-        /* ==========================================
-           [3] 우측 하단 고정형 도움말 및 패치노트 UI
-        ========================================== */
-        .info-panel-container {
-            position: fixed;
-            bottom: 24px;
-            right: 24px;
-            z-index: 2000;
-            font-family: 'Pretendard', sans-serif;
-        }
-        .info-toggle-btn {
-            background: linear-gradient(135deg, #4dadff, #2575fc);
-            color: #ffffff;
-            border: none;
-            width: 50px;
-            height: 50px;
-            border-radius: 50%;
-            font-size: 22px;
-            cursor: pointer;
-            box-shadow: 0 4px 15px rgba(77, 173, 255, 0.4);
-            transition: all 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
-            display: flex;
-            align-items: center;
-            justify-content: center;
-        }
-        .info-toggle-btn:hover {
-            transform: scale(1.1) rotate(15deg);
-            box-shadow: 0 6px 20px rgba(77, 173, 255, 0.6);
-        }
-        .info-card {
-            position: absolute;
-            bottom: 65px;
-            right: 0;
-            width: 350px;
-            max-height: 500px;
-            background: #141622;
-            border: 1px solid rgba(255, 255, 255, 0.08);
-            border-radius: 12px;
-            box-shadow: 0 10px 40px rgba(0,0,0,0.6);
-            display: none;
-            flex-direction: column;
-            overflow: hidden;
-            animation: fadeInUp 0.25s ease-out;
-        }
-        @keyframes fadeInUp {
-            from { opacity: 0; transform: translateY(15px); }
-            to { opacity: 1; transform: translateY(0); }
-        }
-        .info-tabs {
-            display: flex;
-            background: #1e2235;
-            border-bottom: 1px solid rgba(255, 255, 255, 0.06);
-        }
-        .info-tab-btn {
-            flex: 1;
-            padding: 12px;
-            background: none;
-            border: none;
-            color: #8f95b2;
-            font-size: 13px;
-            font-weight: 600;
-            cursor: pointer;
-            transition: all 0.2s;
-            text-align: center;
-        }
-        .info-tab-btn.active {
-            color: #4dadff;
-            background: #141622;
-            border-bottom: 2px solid #4dadff;
-        }
-        .info-content-wrap {
-            padding: 20px;
-            overflow-y: auto;
-            font-size: 13px;
-            line-height: 1.6;
-            color: #bcbfc4;
-        }
-        .info-content { display: none; }
-        .info-content.active { display: block; }
-        .info-content ol { margin: 0; padding-left: 18px; }
-        .info-content li { margin-bottom: 8px; }
-        .info-content li strong { color: #ffffff; }
+    // 파일 이름에서 확장자(.html, .txt 등)를 떼고 순수 이름만 추출하여 저장
+    globOriginFileName = file.name;
 
-        .patch-item {
-            margin-bottom: 16px;
-            border-bottom: 1px solid rgba(255, 255, 255, 0.04);
-            padding-bottom: 12px;
-        }
-        .patch-item:last-child { border: none; margin: 0; padding: 0; }
-        .patch-version {
-            font-weight: bold;
-            color: #4dadff;
-            font-size: 14px;
-            margin-bottom: 4px;
-            display: flex;
-            justify-content: space-between;
-        }
-        .patch-date { font-size: 11px; color: #555a77; font-weight: normal; }
-        .patch-item ul { margin: 4px 0 0 0; padding-left: 16px; color: #9fa3af; font-size: 12.5px; }
-    </style>
-</head>
-<body>
+    const reader = new FileReader();
+    reader.onload = function(evt) {
+        globLoadedFileText = evt.target.result;
+        processAndRender();
+    };
+    reader.readAsText(file, "UTF-8");
+});
 
-    <div class="toolbar">
-        <h2>Sori CCFolia Backup</h2>
-        <div class="controls-group">
-            <div class="control-item">
-                <strong>1. 백업 파일 업로드</strong>
-                <input type="file" id="html-file-picker" accept=".html,.txt">
-            </div>
-            <div class="control-item">
-                <strong>2. 나레이션 캐릭터 지정</strong>
-                <select id="narration-select" disabled>
-                    <option value="">-- 파일 먼저 업로드 --</option>
-                </select>
-            </div>
-        </div>
-        <div class="btn-group">
-            <button class="btn btn-copy" id="copy-btn" disabled>📋 HTML 코드 복사</button>
-            <button class="btn btn-download" id="download-btn" disabled>💾 HTML 다운로드</button>
-        </div>
-    </div>
-
-    <div class="preview-area">
-        <div id="output-wrapper"></div>
-    </div>
-
-    <div class="info-panel-container">
-        <button class="info-toggle-btn" id="info-master-btn" onclick="toggleInfoCard()">💡</button>
+// 1. 확장 프로그램으로부터 순수 데이터 수신
+window.addEventListener('message', function (event) {
+    if (event.data && event.data.type === 'CCFOLIA_RAW_DATA') {
+        event.source.postMessage({ type: 'CCFOLIA_DATA_RECEIVED' }, event.origin);
         
-        <div class="info-card" id="info-main-card">
-            <div class="info-tabs">
-                <button class="info-tab-btn active" onclick="switchInfoTab(0)">📘 도움말</button>
-                <button class="info-tab-btn" onclick="switchInfoTab(1)">📜 업데이트 기록</button>
-            </div>
-            
-            <div class="info-content-wrap">
-                <div class="info-content active" id="tab-content-help">
-                    <ol id="help-list-target"></ol>
-                </div>
-                
-                <div class="info-content" id="tab-content-patch">
-                    <div id="patch-list-target"></div>
-                </div>
-            </div>
-        </div>
-    </div>
+        globScrapedLogs = event.data.payload.collectedLogs;
+        globIncludeChatter = event.data.payload.includeChatter;
+        
+        // 유저 선택 드롭다운 채우기
+        populateNarrationDropdown();
+        
+        document.getElementById('output-wrapper').innerHTML = `
+            <h3 style="text-align: center; margin-top: 100px; color: #4dadff;">
+                ✅ 데이터 수집 완료! 상단에서 [백업 파일 업로드]를 진행해 주세요.
+            </h3>
+        `;
+    }
+});
 
-    <script src="info-data.js"></script>
+// 대기 상태 기본 안내
+document.getElementById('output-wrapper').innerHTML = `
+    <h3 style="text-align: center; margin-top: 100px; color: #aaa;">
+        ⏳ 확장 프로그램에서 추출 시작 버튼을 눌러주세요...
+    </h3>
+`;
 
-    <script>
-        // 페이지가 열릴 때 데이터를 읽어와 화면에 뿌려줌
-        document.addEventListener("DOMContentLoaded", () => {
-            renderHelp();
-            renderPatchNotes();
+// 나레이션 드롭다운 생성 함수
+function populateNarrationDropdown() {
+    const selectEl = document.getElementById('narration-select');
+    if (!globScrapedLogs) return;
+
+    const uniqueNames = Array.from(new Set(
+        Object.values(globScrapedLogs)
+        .map(log => log.name)
+        .filter(name => name && !["System", "시스템", "알 수 없음", "-"].includes(name))
+    ));
+
+    let dropdownOptions = `<option value="">-- 선택 안함 (지문 없음) --</option>`;
+    uniqueNames.forEach(name => {
+        dropdownOptions += `<option value="${name}">${name}</option>`;
+    });
+
+    selectEl.innerHTML = dropdownOptions;
+    selectEl.disabled = false; // 활성화
+}
+
+// 파일 업로드 감지 리스너
+document.getElementById('html-file-picker').addEventListener('change', (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = function(evt) {
+        globLoadedFileText = evt.target.result;
+        processAndRender();
+    };
+    reader.readAsText(file, "UTF-8");
+});
+
+// 나레이션 드롭다운 값이 변경될 때마다 실시간으로 리렌더링 반영!
+document.getElementById('narration-select').addEventListener('change', () => {
+    if (globLoadedFileText) {
+        processAndRender();
+    }
+});
+
+// 핵심 정렬 및 매칭 로직
+function processAndRender() {
+    if (!globScrapedLogs || !globLoadedFileText) return;
+
+    const scraperArray = JSON.parse(JSON.stringify(Object.values(globScrapedLogs)));
+    const finalOrderedLogs = [];
+    const narrationName = document.getElementById('narration-select').value;
+
+    const pTagRegex = /<p[^>]*>([\s\S]*?)<\/p>/gi;
+    const spanRegex = /<span>\s*\[([^\]]+)\]\s*<\/span>\s*<span>\s*([\s\S]*?)\s*<\/span>\s*:\s*<span>\s*([\s\S]*?)\s*<\/span>/i;
+
+    const getPureKey = (text) => {
+        if (!text) return "";
+        return text.replace(/&#?[a-z0-9]+;/gi, '').replace(/<[^>]*>/g, '').replace(/[^\p{L}\p{N}]+/gu, '');
+    };
+
+    let match;
+    while ((match = pTagRegex.exec(globLoadedFileText)) !== null) {
+        const pContent = match[1].trim();
+        const logMatch = pContent.match(spanRegex);
+        if (!logMatch) continue;
+
+        let fileTabRaw = logMatch[1].trim();
+        let fileTab = fileTabRaw.toLowerCase();
+        const fileName = logMatch[2].trim().replace(/<[^>]*>/g, '');
+        let fileMessage = logMatch[3].trim().replace(/^\s+|\s+$/g, '');
+        
+        // ✨ [수정 1] 대사가 없는 빈 칸이거나 공백만 있다면 아바타 세트/나레이션 가릴 것 없이 아예 추가하지 않고 패스
+        if (!fileMessage) continue;
+
+        const fileMatchKey = getPureKey(fileMessage);
+
+        if (fileTab === 'main') fileTab = '메인';
+        else if (fileTab === 'other') fileTab = '잡담';
+        else if (fileTab === 'info') fileTab = '정보';
+
+        if (!globIncludeChatter && fileTab === '잡담') continue;
+
+        let matchedLog = scraperArray.find(log => {
+            return !log.used && log.tabName === fileTab && log.name === fileName && getPureKey(log.matchKey) === fileMatchKey;
         });
-
-        function renderHelp() {
-            const target = document.getElementById('help-list-target');
-            target.innerHTML = HELP_DATA.map(item => `<li>${item.text}</li>`).join('');
-        }
-
-        function renderPatchNotes() {
-            const target = document.getElementById('patch-list-target');
-            target.innerHTML = PATCH_DATA.map(item => `
-                <div class="patch-item">
-                    <div class="patch-version">${item.version} <span class="patch-date">${item.date}</span></div>
-                    <ul>
-                        ${item.changes.map(change => `<li>${change}</li>`).join('')}
-                    </ul>
-                </div>
-            `).join('');
-        }
-
-        function toggleInfoCard() {
-            const card = document.getElementById('info-main-card');
-            const btn = document.getElementById('info-master-btn');
-            if (card.style.display === 'flex') {
-                card.style.display = 'none';
-                btn.innerText = '💡';
-            } else {
-                card.style.display = 'flex';
-                btn.innerText = '❌';
-            }
-        }
-
-        function switchInfoTab(index) {
-            const tabs = document.querySelectorAll('.info-tab-btn');
-            const contents = document.querySelectorAll('.info-content');
-            
-            tabs.forEach((tab, i) => {
-                if (i === index) {
-                    tab.classList.add('active');
-                    contents[i].classList.add('active');
-                } else {
-                    tab.classList.remove('active');
-                    contents[i].classList.remove('active');
-                }
+        if (!matchedLog) {
+            matchedLog = scraperArray.find(log => {
+                return !log.used && log.name === fileName && getPureKey(log.matchKey) === fileMatchKey;
             });
         }
-    </script>
+        if (!matchedLog) {
+            matchedLog = scraperArray.find(log => {
+                return !log.used && getPureKey(log.matchKey) === fileMatchKey;
+            });
+        }
 
-    <script src="script.js"></script>
-</body>
-</html>
+        const isNarration = (narrationName && fileName === narrationName.trim());
+        const isSystem = ["System", "시스템", "system"].includes(fileName);
+
+        if (matchedLog) {
+            matchedLog.used = true;
+            finalOrderedLogs.push({
+                tabName: fileTab,
+                name: matchedLog.name,
+                imgUrl: matchedLog.imgUrl,
+                message: fileMessage,
+                color: matchedLog.color,
+                isNarration: isNarration,
+                isSystem: isSystem
+            });
+        } else {
+            finalOrderedLogs.push({
+                tabName: fileTab,
+                name: fileName,
+                imgUrl: "",
+                message: fileMessage,
+                color: (fileName === "-" || isSystem) ? "#888888" : "#b4b4b4",
+                isNarration: isNarration,
+                isSystem: isSystem
+            });
+        }
+    }
+
+    renderPreview(finalOrderedLogs);
+}
+
+function generatePureHtmlHtml(bodyContent) {
+    const htmlStyles = `
+<style>
+body { background-color: #121212; margin: 0; padding: 20px; }
+.log-container { width: 100%; max-width: 800px; background-color: #1e1e1e; border-radius: 8px; padding: 20px !important; box-shadow: 0 4px 10px rgba(0,0,0,0.3); display: flex; flex-direction: column; gap: 12px; color: #e0e0e0; font-family: sans-serif; margin: 0 auto; }
+.chat-row { display: flex; align-items: flex-start; position: relative; } 
+.avatar-box{width:64px;height:64px;margin-right:15px;flex-shrink:0;background-color:#1a1a1a;border-radius:8px;overflow:hidden}
+.avatar-box img{width:100%;height:100%;object-fit:contain}
+.text-wrap { display: flex; flex-direction: column; flex-grow: 1; padding-right: 60px; } 
+.char-name { font-weight: bold; font-size: 14px; margin-bottom: 6px; display: block; }
+.bubbles-container { display: flex; flex-direction: column; gap: 4px; }
+p.message-bubble { background-color: #141414; border-radius: 8px; padding: 8px 14px !important; font-size: 14px; line-height: 1.6; white-space: pre-wrap; word-break: break-all; color: #dddddd; margin: 0; width: fit-content; max-width: 100%; box-sizing: border-box; }
+/* ✨ 주사위 전용 밝은 말풍선 스타일 */
+p.message-bubble.dice-bubble { background-color: #2a2a2a; color: #ffffff;}
+.narration-box { background-color: #2d2d2d; border-radius: 8px; padding: 10px 14px !important; font-size: 14px; line-height: 1.6; white-space: pre-wrap; word-break: break-all; color: #ffffff; text-align: center; width: 100%; box-sizing: border-box; margin: 2px 0; }
+.tab-tag { position: absolute; top: 2px; right: 2px; display: inline-block; padding: 2px 6px; font-size: 10px; border-radius: 4px; background-color: #333; color: #aaa;}
+</style>`;
+    return `<!DOCTYPE html><html lang="ko"><head><meta charset="UTF-8"><title>코코포리아 로그 백업 4.0</title>${htmlStyles}</head><body>${bodyContent}</body></html>`;
+}
+
+function renderPreview(logs) {
+    let htmlBody = `<div class="log-container">`;
+    let currentGroup = null;
+
+    // 대사 그룹 마감 및 HTML 생성 함수
+    function closeChatGroup(group) {
+        // 개별 말풍선 생성시 수정/삭제 버튼 및 식별용 데이터(index)를 심어줍니다.
+        let bubblesHtml = group.messages.map((msg, subIdx) => {
+            const isDice = msg.includes('＞');
+            const diceClass = isDice ? ' dice-bubble' : '';
+            
+            return `
+            <div class="bubble-wrapper" data-group-id="${group.id}" data-sub-idx="${subIdx}">
+                <p class="message-bubble${diceClass}">${msg}</p>
+                <div class="bubble-actions">
+                    <button class="action-mini-btn edit-btn">✏️ 수정</button>
+                    <button class="action-mini-btn delete-btn">❌ 삭제</button>
+                </div>
+            </div>`;
+        }).join('');
+
+        return `
+        <div class="chat-row" id="group-${group.id}">
+            ${group.tagHtml || ''}
+            <div class="avatar-box">${group.imgUrl ? `<img src="${group.imgUrl}">` : ''}</div>
+            <div class="text-wrap">
+                <span class="char-name" style="color:${group.color}">${group.name}</span>
+                <div class="bubbles-container">${bubblesHtml}</div>
+            </div>
+        </div>`;
+    }
+
+    // 각각의 그룹을 고유하게 식별하기 위한 카운터 변수
+    let groupIdCounter = 0;
+
+    logs.forEach((log) => {
+        const tagHtml = (log.tabName === '메인') ? '' : `<span class="tab-tag">${log.tabName}</span>`;
+
+        // 나레이션 이거나 시스템 메시지인 경우 처리
+        if (log.isSystem || log.isNarration || log.name === "-") {
+            if (currentGroup) { htmlBody += closeChatGroup(currentGroup); currentGroup = null; }
+            
+            // 나레이션 구역도 수정/삭제가 가능하도록 구조화
+            groupIdCounter++;
+            htmlBody += `
+            <div class="chat-row" id="group-${groupIdCounter}">
+                ${tagHtml}
+                <div class="bubble-wrapper" data-group-id="${groupIdCounter}" data-sub-idx="0" style="width:100%;">
+                    <div class="narration-box">${log.message}</div>
+                    <div class="bubble-actions" style="position:absolute; right:10px; top:5px;">
+                        <button class="action-mini-btn edit-btn">✏️ 수정</button>
+                        <button class="action-mini-btn delete-btn">❌ 삭제</button>
+                    </div>
+                </div>
+            </div>`;
+            return;
+        }
+
+        // 일반 채팅 대사 연속 묶기 판정
+        if (currentGroup && currentGroup.imgUrl === log.imgUrl && currentGroup.tabName === log.tabName && currentGroup.name === log.name) {
+            currentGroup.messages.push(log.message);
+        } else {
+            if (currentGroup) htmlBody += closeChatGroup(currentGroup);
+            groupIdCounter++;
+            currentGroup = { 
+                id: groupIdCounter,
+                imgUrl: log.imgUrl, 
+                tabName: log.tabName, 
+                name: log.name, 
+                color: log.color, 
+                tagHtml: tagHtml, 
+                messages: [log.message] 
+            };
+        }
+    });
+
+    if (currentGroup) htmlBody += closeChatGroup(currentGroup);
+    htmlBody += `</div>`;
+
+    // 1. 화면에 미리보기 출력
+    const wrapper = document.getElementById('output-wrapper');
+    wrapper.innerHTML = htmlBody;
+
+    // =======================================================
+    // ✨ [실시간 수정/삭제 이벤트 핸들러 빌드]
+    // =======================================================
+    
+    // [삭제 버튼 클릭 처리]
+    wrapper.querySelectorAll('.delete-btn').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+            const wrapperDiv = e.target.closest('.bubble-wrapper');
+            const rowDiv = e.target.closest('.chat-row');
+            
+            // 화면에서 해당 말풍선 엘리먼트 즉시 삭제
+            wrapperDiv.remove();
+            
+            // 만약 캐릭터 대사 묶음 안에 말풍선이 하나도 안 남았다면 줄 자체를 삭제
+            const remainingBubbles = rowDiv.querySelectorAll('.bubble-wrapper');
+            if (remainingBubbles.length === 0) {
+                rowDiv.remove();
+            }
+            
+            // 소스코드 갱신 수집 리렌더링
+            updateFinalSource();
+        });
+    });
+
+    // [수정 버튼 클릭 처리]
+    wrapper.querySelectorAll('.edit-btn').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+            const wrapperDiv = e.target.closest('.bubble-wrapper');
+            // 나레이션 박스인지 일반 말풍선인지 판별하여 텍스트 타겟팅
+            const targetTextEl = wrapperDiv.querySelector('.message-bubble') || wrapperDiv.querySelector('.narration-box');
+            
+            const oldText = targetTextEl.innerText;
+            const newText = prompt("✏️ 수정할 내용을 입력하세요:", oldText);
+            
+            if (newText !== null && newText.trim() !== "") {
+                targetTextEl.innerText = newText.trim();
+                
+                // 만약 주사위 판정 기호(＞)가 생기거나 없어졌을 때 실시간 스타일 변형 반영
+                if (targetTextEl.classList.contains('message-bubble')) {
+                    if (newText.includes('＞')) {
+                        targetTextEl.classList.add('dice-bubble');
+                    } else {
+                        targetTextEl.classList.remove('dice-bubble');
+                    }
+                }
+                
+                // 소스코드 갱신 수집 리렌더링
+                updateFinalSource();
+            }
+        });
+    });
+
+    // 최종 소스코드를 가공해서 다운로드/복사 버튼에 주입하는 내부 공유 함수
+    function updateFinalSource() {
+        // 복사나 저장용 파일에는 [수정], [삭제] 툴바 버튼들이 박히면 안되므로, 
+        // 화면의 컨테이너를 복제(Clone)해서 버튼 태그들만 다 떼어낸 깨끗한 코드 순수 추출 작업을 진행합니다.
+        const cloneContainer = wrapper.querySelector('.log-container').cloneNode(true);
+        
+        // 다운로드용 코드에서는 버튼 래퍼와 액션 버튼 전원 제거 및 태그 마감 처리
+        cloneContainer.querySelectorAll('.bubble-actions').forEach(el => el.remove());
+        
+        const cleanHtmlContent = cloneContainer.outerHTML;
+        const fullHtmlSource = generatePureHtmlHtml(cleanHtmlContent);
+
+        // 버튼 컴포넌트 기능 재매핑
+        const copyBtn = document.getElementById('copy-btn');
+        const downloadBtn = document.getElementById('download-btn');
+        
+        copyBtn.disabled = false;
+        downloadBtn.disabled = false;
+
+        const newDownload = downloadBtn.cloneNode(true);
+        downloadBtn.parentNode.replaceChild(newDownload, downloadBtn);
+        newDownload.addEventListener('click', () => {
+            const blob = new Blob([fullHtmlSource], { type: "text/html" });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement("a");
+            a.href = url;
+            
+            let finalFileName = globOriginFileName.replace(/\s*\[[\s\S]*$/, '').trim() || "cocofolia_processed_log";
+            a.download = `${finalFileName}.html`;
+            
+            document.body.appendChild(a); a.click(); document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+        });
+
+        const newCopy = copyBtn.cloneNode(true);
+        copyBtn.parentNode.replaceChild(newCopy, copyBtn);
+        newCopy.addEventListener('click', async () => {
+            try {
+                await navigator.clipboard.writeText(fullHtmlSource);
+                alert("✨ 수정한 내용이 반영된 HTML 전체 소스코드가 클립보드에 복사되었습니다!");
+            } catch (err) { alert("클립보드 복사에 실패했습니다."); }
+        });
+    }
+
+    // 첫 빌드 시점에 초기 소스코드 한 번 전역 주입
+    updateFinalSource();
+}
