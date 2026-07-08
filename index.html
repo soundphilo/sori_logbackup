@@ -4,10 +4,11 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Sori CCFolia Backup</title>
+    
     <link rel="icon" type="image/png" href="fav.png">
 
     <style>
-        /* 1. 전체 테마 배경 및 폰트 */
+        /* 1. 전체 기본 스튜디오 배경 테마 */
         body { 
             background-color: #0f111a; 
             color: #f1f1f4; 
@@ -17,13 +18,13 @@
             letter-spacing: -0.3px;
         }
 
-        /* 2. 상단 고정 툴바 구역 */
+        /* 2. 상단 글래스모피즘 툴바 구역 */
         .toolbar { 
             position: fixed; 
             top: 0; 
             left: 0; 
             right: 0; 
-            height: 90px; /* 안내 문구를 위해 높이를 조금 늘렸습니다 */
+            height: 80px; 
             background: rgba(24, 28, 41, 0.9); 
             backdrop-filter: blur(12px);
             -webkit-backdrop-filter: blur(12px);
@@ -36,12 +37,6 @@
             z-index: 1000; 
         }
         
-        .title-area {
-            display: flex;
-            flex-direction: column;
-            gap: 4px;
-        }
-
         .toolbar h2 { 
             margin: 0; 
             font-size: 19px; 
@@ -52,17 +47,8 @@
             text-shadow: 0 2px 10px rgba(77, 173, 255, 0.2);
             letter-spacing: 0.5px;
         }
-
-        /* ✨ [핵심 복구] 자바스크립트가 텍스트를 갈아끼우는 상태 메시지 창 스타일링 */
-        #status-message {
-            font-size: 12px;
-            color: #a3e635; /* 연두색 톤으로 가독성 확보 */
-            font-weight: 500;
-            margin: 0;
-            min-height: 18px;
-        }
         
-        /* 3. 상단 설정 및 조작 버튼 */
+        /* 3. 컨트롤러 배치 그룹 */
         .controls-group { 
             display: flex; 
             align-items: center; 
@@ -152,39 +138,93 @@
             cursor: not-allowed;
         }
         
-        /* 4. 출력 프리뷰 컨테이너 구역 */
+        /* 4. 작업 영역 전체 배치 레이아웃 */
         .preview-area { 
-            margin-top: 130px; /* 헤더가 조금 높아진 만큼 여백 조절 */
+            margin-top: 110px; 
             padding: 20px; 
             display: flex;
             justify-content: center;
         }
 
+        /* ⚠️ 기존 스크립트 본연의 레이아웃을 100% 띄워주기 위해 불필요한 속성 전면 제거 */
         #output-wrapper {
             width: 100%;
             max-width: 850px;
-            background-color: #151722;
-            border-radius: 12px;
-            padding: 10px;
-            box-shadow: 0 10px 40px rgba(0,0,0,0.5);
-            border: 1px solid rgba(255, 255, 255, 0.04);
             box-sizing: border-box;
         }
 
-        #output-wrapper > div {
-            margin: 0 auto;
+        /* 대기 중/안내용 문구 h3 전용 다크 카드 테마 설정 */
+        #output-wrapper h3 {
+            font-size: 14px;
+            font-weight: 500;
+            background-color: #151722;
+            padding: 40px 20px !important;
+            border-radius: 12px;
+            border: 1px dashed rgba(77, 173, 255, 0.3);
+            box-shadow: 0 10px 30px rgba(0,0,0,0.3);
+            letter-spacing: 0.5px;
+        }
+
+        /* 🚀 [순정 복구의 핵심] 자바스크립트 내부 스타일링과 엉키지 않도록 최소한의 테마만 오버레이 */
+        #output-wrapper .log-container {
+            background-color: #151722 !important; /* 작업실 배경에 맞춘 다크룸 스킨 배경화면 처리 */
+            border-radius: 12px !important;
+            padding: 30px !important;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.5) !important;
+            border: 1px solid rgba(255, 255, 255, 0.04) !important;
+        }
+
+        /* 🛠️ 실시간 수정/삭제 버튼을 원래 말풍선 훼손 없이 우측에 띄워주는 스타일링 */
+        .bubble-wrapper {
+            position: relative;
+            display: flex;
+            align-items: center;
+            width: 100%;
+        }
+        
+        .bubble-actions { 
+            display: flex; 
+            gap: 6px; 
+            opacity: 0; 
+            transform: translateX(-5px); 
+            transition: all 0.2s ease;
+            position: absolute;
+            right: 0;
+            top: 50%;
+            transform: translateY(-50%) translateX(10px);
+            z-index: 50;
+        }
+        
+        .bubble-wrapper:hover .bubble-actions { 
+            opacity: 1; 
+            transform: translateY(-50%) translateX(0); 
+        }
+        
+        .action-mini-btn { 
+            background: #1e2235; 
+            color: #8f95b2; 
+            border: 1px solid #333955; 
+            padding: 4px 8px; 
+            border-radius: 5px; 
+            font-size: 11px; 
+            cursor: pointer; 
+            font-family: inherit;
+        }
+        .action-mini-btn:hover { 
+            color: #ffffff; 
+            border-color: #4dadff; 
+        }
+        .action-mini-btn.delete-btn:hover { 
+            background: rgba(239, 68, 68, 0.2); 
+            border-color: #ef4444; 
+            color: #fca5a5; 
         }
     </style>
 </head>
 <body>
 
-    <!-- 고정 메뉴바 상단 툴바 구역 -->
     <div class="toolbar">
-        <div class="title-area">
-            <h2>Sori CCFolia Backup</h2>
-            <!-- ⚠️ [복구 핵심] 자바스크립트 안내 문구가 주입되는 ID 그릇 생성 -->
-            <p id="status-message"></p>
-        </div>
+        <h2>Sori CCFolia Backup</h2>
         
         <div class="controls-group">
             <div class="control-item">
@@ -206,12 +246,10 @@
         </div>
     </div>
 
-    <!-- 변환 출력 프리뷰 컨테이너 구역 -->
     <div class="preview-area">
         <div id="output-wrapper"></div>
     </div>
 
-    <!-- 백엔드 로직 스크립트 연결 -->
     <script src="script.js"></script>
 </body>
 </html>
