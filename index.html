@@ -8,7 +8,7 @@
 
     <style>
         /* ==========================================
-           [1] 작업실 웹사이트 전용 다크 스튜디오 테마
+           [1] 기존 뼈대는 그대로 유지, 겉껍데기 디자인만 변경
         ========================================== */
         body { 
             background-color: #0f111a; 
@@ -19,7 +19,7 @@
             letter-spacing: -0.3px;
         }
 
-        /* 상단 고정 툴바 구역 */
+        /* 상단 고정 툴바 (원래 구조에 디자인만 고급스럽게 오버레이) */
         .toolbar { 
             position: fixed; 
             top: 0; 
@@ -36,6 +36,7 @@
             box-shadow: 0 4px 30px rgba(0, 0, 0, 0.4); 
             border-bottom: 1px solid rgba(255, 255, 255, 0.06);
             z-index: 1000; 
+            box-sizing: border-box;
         }
         
         .toolbar h2 { 
@@ -49,7 +50,6 @@
             letter-spacing: 0.5px;
         }
         
-        /* 컨트롤러 배치 그룹 */
         .controls-group { 
             display: flex; 
             align-items: center; 
@@ -139,34 +139,22 @@
             cursor: not-allowed;
         }
         
-        /* 작업 영역 전체 배치 레이아웃 */
+        /* 프리뷰 영역 전체 배치 바깥 여백 */
         .preview-area { 
-            margin-top: 100px; 
+            margin-top: 110px; 
             padding: 20px; 
             display: flex;
             justify-content: center;
         }
 
+        /* ⚠️ 오리지널 스크립트가 온전히 작동하도록 ID 그릇 유지 */
         #output-wrapper {
             width: 100%;
             max-width: 850px;
             box-sizing: border-box;
         }
 
-        /* 대기 중/안내용 문구 h3용 스타일 */
-        #output-wrapper h3 {
-            font-size: 14px;
-            font-weight: 500;
-            background-color: #151722;
-            padding: 40px 20px;
-            border-radius: 12px;
-            border: 1px dashed rgba(77, 173, 255, 0.3);
-            box-shadow: 0 10px 30px rgba(0,0,0,0.3);
-            text-align: center;
-            letter-spacing: 0.5px;
-        }
-
-        /* 실시간 수정/삭제 버튼 조작을 위한 절대 좌표 처리 */
+        /* 🛠️ 실시간 수정/삭제 버튼을 원래 말풍선 훼손 없이 띄워주는 스타일 */
         .bubble-wrapper {
             position: relative;
             display: flex;
@@ -211,8 +199,8 @@
 
 
         /* ==========================================
-           [2] 순정 로그 스킨 백업 스타일
-           (다운로드 결과물 디자인 원본 유지 - 과도한 !important 정리)
+           [2] 자바스크립트 내부 `generatePureHtmlHtml`과 
+               100% 동일하게 일치시킨 순정 복구 스타일
         ========================================== */
         .log-container { 
             width: 100%; 
@@ -232,11 +220,9 @@
         .chat-row { display: flex; align-items: flex-start; position: relative; margin: 0; padding: 0; } 
         .avatar-box { width: 64px; height: 64px; margin-right: 15px; flex-shrink: 0; background-color: #1a1a1a; border-radius: 8px; overflow: hidden; }
         .avatar-box img { width: 100%; height: 100%; object-fit: contain; margin: 0; padding: 0; }
-        .text-wrap { display: flex; flex-grow: 1; padding-right: 120px; } 
+        .text-wrap { display: flex; flex-direction: column; flex-grow: 1; padding-right: 60px; } 
         .char-name { font-weight: bold; font-size: 14px; margin-bottom: 6px; display: block; }
-        .bubbles-container { display: flex; flex-direction: column; gap: 4px; width: 100%; }
-        
-        /* 자바스크립트가 인라인 스타일로 오버라이딩하는 속성을 방해하지 않기 위해 최소화 */
+        .bubbles-container { display: flex; flex-direction: column; gap: 4px; }
         p.message-bubble { background-color: #141414; border-radius: 8px; padding: 8px 14px; font-size: 14px; line-height: 1.6; white-space: pre-wrap; word-break: break-all; color: #dddddd; margin: 0; width: fit-content; max-width: 100%; box-sizing: border-box; }
         p.message-bubble.dice-bubble { background-color: #2a2a2a; color: #ffffff; border: 1px solid #444; }
         .narration-box { background-color: #2d2d2d; border-radius: 8px; padding: 10px 14px; font-size: 14px; line-height: 1.6; white-space: pre-wrap; word-break: break-all; color: #ffffff; text-align: center; width: 100%; box-sizing: border-box; margin: 2px 0; }
@@ -247,11 +233,13 @@
 
     <div class="toolbar">
         <h2>Sori CCFolia Backup</h2>
+        
         <div class="controls-group">
             <div class="control-item">
                 <strong>1. 백업 파일 업로드</strong>
                 <input type="file" id="html-file-picker" accept=".html,.txt">
             </div>
+            
             <div class="control-item">
                 <strong>2. 나레이션 캐릭터 지정</strong>
                 <select id="narration-select" disabled>
@@ -259,6 +247,7 @@
                 </select>
             </div>
         </div>
+
         <div class="btn-group">
             <button class="btn btn-copy" id="copy-btn" disabled>📋 HTML 복사</button>
             <button class="btn btn-download" id="download-btn" disabled>💾 다운로드</button>
