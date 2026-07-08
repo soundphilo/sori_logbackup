@@ -9,8 +9,17 @@ const HELP_DATA = [
 // 패치노트
 const PATCH_DATA = [
     {
-        version: "v4.0",
+        version: "v5.0",
         date: "2026-07-08",
+        changes: [
+            "사이트에서 파일의 업로드가 가능해졌습니다.",
+            "기타 UI를 수정했습니다."
+        ]
+    },
+    
+    {
+        version: "v4.0",
+        date: "2026-07-06",
         changes: [
             "이제 성형 사이트에 연결도 합니다!"
         ]
