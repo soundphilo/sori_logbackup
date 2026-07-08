@@ -4,11 +4,10 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Sori CCFolia Backup</title>
-    
     <link rel="icon" type="image/png" href="fav.png">
 
     <style>
-        /* 1. 전체 기본 테마 스타일 */
+        /* 1. 전체 테마 배경 및 폰트 */
         body { 
             background-color: #0f111a; 
             color: #f1f1f4; 
@@ -24,7 +23,7 @@
             top: 0; 
             left: 0; 
             right: 0; 
-            height: 80px; 
+            height: 90px; /* 안내 문구를 위해 높이를 조금 늘렸습니다 */
             background: rgba(24, 28, 41, 0.9); 
             backdrop-filter: blur(12px);
             -webkit-backdrop-filter: blur(12px);
@@ -37,6 +36,12 @@
             z-index: 1000; 
         }
         
+        .title-area {
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+        }
+
         .toolbar h2 { 
             margin: 0; 
             font-size: 19px; 
@@ -47,8 +52,17 @@
             text-shadow: 0 2px 10px rgba(77, 173, 255, 0.2);
             letter-spacing: 0.5px;
         }
+
+        /* ✨ [핵심 복구] 자바스크립트가 텍스트를 갈아끼우는 상태 메시지 창 스타일링 */
+        #status-message {
+            font-size: 12px;
+            color: #a3e635; /* 연두색 톤으로 가독성 확보 */
+            font-weight: 500;
+            margin: 0;
+            min-height: 18px;
+        }
         
-        /* 3. 컨트롤러 배치 그룹 */
+        /* 3. 상단 설정 및 조작 버튼 */
         .controls-group { 
             display: flex; 
             align-items: center; 
@@ -138,54 +152,39 @@
             cursor: not-allowed;
         }
         
-        /* 4. 변환 출력 프리뷰 바깥 레이아웃 구역 */
+        /* 4. 출력 프리뷰 컨테이너 구역 */
         .preview-area { 
-            margin-top: 100px; 
+            margin-top: 130px; /* 헤더가 조금 높아진 만큼 여백 조절 */
             padding: 20px; 
             display: flex;
             justify-content: center;
         }
 
-        /* ⚠️ [구조 변경 핵심] 자바스크립트가 innerHTML로 내용을 밀어 넣는 타겟 태그 */
         #output-wrapper {
             width: 100%;
             max-width: 850px;
+            background-color: #151722;
+            border-radius: 12px;
+            padding: 10px;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.5);
+            border: 1px solid rgba(255, 255, 255, 0.04);
             box-sizing: border-box;
         }
 
-        /* 🚀 스크립트가 집어넣은 수집 완료 안내문(h3) 전용 테마 스타일 지정 */
-        #output-wrapper h3 {
-            font-size: 15px;
-            font-weight: 500;
-            background-color: #151722;
-            padding: 40px 20px !important;
-            border-radius: 12px;
-            border: 1px dashed rgba(77, 173, 255, 0.3);
-            box-shadow: 0 10px 30px rgba(0,0,0,0.3);
-            letter-spacing: 0.5px;
+        #output-wrapper > div {
+            margin: 0 auto;
         }
-
-        /* 🚀 스크립트가 가공해 낸 실제 대화방 본체 박스 테마 스타일 지정 */
-        #output-wrapper .log-container {
-            background-color: #151722 !important;
-            border-radius: 12px !important;
-            padding: 30px !important;
-            box-shadow: 0 10px 40px rgba(0,0,0,0.5) !important;
-            border: 1px solid rgba(255, 255, 255, 0.04) !important;
-        }
-
-        /* 미니 액션 툴바 위치 보정 */
-        .bubble-actions { display: flex; gap: 6px; opacity: 0; transform: translateX(-5px); transition: all 0.2s ease; }
-        .bubble-wrapper:hover .bubble-actions { opacity: 1; transform: translateX(0); }
-        .action-mini-btn { background: #1e2235; color: #8f95b2; border: 1px solid #333955; padding: 4px 8px; border-radius: 5px; font-size: 11px; cursor: pointer; }
-        .action-mini-btn:hover { color: #ffffff; border-color: #4dadff; }
-        .action-mini-btn.delete-btn:hover { background: rgba(239, 68, 68, 0.2); border-color: #ef4444; color: #fca5a5; }
     </style>
 </head>
 <body>
 
+    <!-- 고정 메뉴바 상단 툴바 구역 -->
     <div class="toolbar">
-        <h2>Sori CCFolia Backup</h2>
+        <div class="title-area">
+            <h2>Sori CCFolia Backup</h2>
+            <!-- ⚠️ [복구 핵심] 자바스크립트 안내 문구가 주입되는 ID 그릇 생성 -->
+            <p id="status-message"></p>
+        </div>
         
         <div class="controls-group">
             <div class="control-item">
@@ -207,10 +206,12 @@
         </div>
     </div>
 
+    <!-- 변환 출력 프리뷰 컨테이너 구역 -->
     <div class="preview-area">
         <div id="output-wrapper"></div>
     </div>
 
+    <!-- 백엔드 로직 스크립트 연결 -->
     <script src="script.js"></script>
 </body>
 </html>
