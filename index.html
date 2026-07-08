@@ -236,4 +236,39 @@
         .char-name { font-weight: bold; font-size: 14px; margin-bottom: 6px; display: block; }
         .bubbles-container { display: flex; flex-direction: column; gap: 4px; width: 100%; }
         
-        /* 자바스크립트가 인라인 스타일로 오버라이딩하는 속성을 방해하지 않기 위해 최소
+        /* 자바스크립트가 인라인 스타일로 오버라이딩하는 속성을 방해하지 않기 위해 최소화 */
+        p.message-bubble { background-color: #141414; border-radius: 8px; padding: 8px 14px; font-size: 14px; line-height: 1.6; white-space: pre-wrap; word-break: break-all; color: #dddddd; margin: 0; width: fit-content; max-width: 100%; box-sizing: border-box; }
+        p.message-bubble.dice-bubble { background-color: #2a2a2a; color: #ffffff; border: 1px solid #444; }
+        .narration-box { background-color: #2d2d2d; border-radius: 8px; padding: 10px 14px; font-size: 14px; line-height: 1.6; white-space: pre-wrap; word-break: break-all; color: #ffffff; text-align: center; width: 100%; box-sizing: border-box; margin: 2px 0; }
+        .tab-tag { position: absolute; top: 2px; right: 2px; display: inline-block; padding: 2px 6px; font-size: 10px; border-radius: 4px; background-color: #333; color: #aaa; }
+    </style>
+</head>
+<body>
+
+    <div class="toolbar">
+        <h2>Sori CCFolia Backup</h2>
+        <div class="controls-group">
+            <div class="control-item">
+                <strong>1. 백업 파일 업로드</strong>
+                <input type="file" id="html-file-picker" accept=".html,.txt">
+            </div>
+            <div class="control-item">
+                <strong>2. 나레이션 캐릭터 지정</strong>
+                <select id="narration-select" disabled>
+                    <option value="">-- 파일 먼저 업로드 --</option>
+                </select>
+            </div>
+        </div>
+        <div class="btn-group">
+            <button class="btn btn-copy" id="copy-btn" disabled>📋 HTML 복사</button>
+            <button class="btn btn-download" id="download-btn" disabled>💾 다운로드</button>
+        </div>
+    </div>
+
+    <div class="preview-area">
+        <div id="output-wrapper"></div>
+    </div>
+
+    <script src="script.js"></script>
+</body>
+</html>
