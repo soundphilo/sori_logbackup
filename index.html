@@ -5,21 +5,38 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Sori CCFolia Backup</title>
     <link rel="icon" type="image/png" href="fav.png">
-
     <style>
         /* ==========================================
-           [1] 기존 뼈대는 그대로 유지, 겉껍데기 디자인만 변경
+           [1] 순정 스타일 뼈대 (한 글자도 수정 없음)
         ========================================== */
-        body { 
-            background-color: #0f111a; 
-            color: #f1f1f4; 
-            font-family: 'Pretendard', -apple-system, BlinkMacSystemFont, system-ui, sans-serif; 
-            margin: 0; 
-            padding: 0;
-            letter-spacing: -0.3px;
-        }
+        body { background-color: #0f111a; color: #e0e0e0; font-family: sans-serif; margin: 0; padding: 0; }
+        
+        /* 프리뷰 영역 배치 */
+        .preview-area { margin-top: 100px; padding: 20px; }
+        
+        .log-container { width: 100%; max-width: 800px; background-color: #1e1e1e; border-radius: 8px; padding: 20px !important; box-shadow: 0 4px 10px rgba(0,0,0,0.3); display: flex; flex-direction: column; gap: 12px; color: #e0e0e0; font-family: sans-serif; margin: 0 auto; }
+        .chat-row { display: flex; align-items: flex-start; position: relative; } 
+        .avatar-box{width:64px;height:64px;margin-right:15px;flex-shrink:0;background-color:#1a1a1a;border-radius:8px;overflow:hidden}
+        .avatar-box img{width:100%;height:100%;object-fit:contain}
+        .text-wrap { display: flex; flex-direction: column; flex-grow: 1; padding-right: 60px; } 
+        .char-name { font-weight: bold; font-size: 14px; margin-bottom: 6px; display: block; }
+        .bubbles-container { display: flex; flex-direction: column; gap: 4px; }
+        p.message-bubble { background-color: #141414; border-radius: 8px; padding: 8px 14px !important; font-size: 14px; line-height: 1.6; white-space: pre-wrap; word-break: break-all; color: #dddddd; margin: 0; width: fit-content; max-width: 100%; box-sizing: border-box; }
+        .narration-box { background-color: #2d2d2d; border-radius: 8px; padding: 10px 14px !important; font-size: 14px; line-height: 1.6; white-space: pre-wrap; word-break: break-all; color: #ffffff; text-align: center; width: 100%; box-sizing: border-box; margin: 2px 0; }
+        .tab-tag { position: absolute; top: 2px; right: 2px; display: inline-block; padding: 2px 6px; font-size: 10px; border-radius: 4px; background-color: #333; color: #aaa;}
+        
+        p.message-bubble { position: relative; group: hover; }
+        .bubble-wrapper { position: relative; display: flex; align-items: center; gap: 8px; max-width: 100%; }
+        .bubble-actions { display: flex; gap: 4px; opacity: 0; transition: opacity 0.2s; }
+        .bubble-wrapper:hover .bubble-actions { opacity: 1; }
+        
+        .action-mini-btn { background: #252940; color: #8f95b2; border: 1px solid #3b4260; padding: 2px 6px; border-radius: 4px; font-size: 11px; cursor: pointer; transition: 0.1s; }
+        .action-mini-btn:hover { color: #fff; background: #4dadff; border-color: #4dadff; }
+        .action-mini-btn.delete-btn:hover { background: #901a1a; border-color: #ff4d4d; color: #fff; }
 
-        /* 상단 고정 툴바 (원래 구조에 디자인만 고급스럽게 오버레이) */
+        /* ==========================================
+           [2] 상단 고정 툴바 구역 세련된 UI 껍데기 적용
+        ========================================== */
         .toolbar { 
             position: fixed; 
             top: 0; 
@@ -41,7 +58,7 @@
         
         .toolbar h2 { 
             margin: 0; 
-            font-size: 19px; 
+            font-size: 18px; 
             font-weight: 800;
             background: linear-gradient(135deg, #4dadff, #7df9ff);
             -webkit-background-clip: text;
@@ -50,25 +67,9 @@
             letter-spacing: 0.5px;
         }
         
-        .controls-group { 
-            display: flex; 
-            align-items: center; 
-            gap: 24px; 
-        }
-        
-        .control-item { 
-            display: flex; 
-            flex-direction: column; 
-            gap: 6px; 
-        }
-        
-        .control-item strong { 
-            color: #8f95b2; 
-            font-size: 11px; 
-            text-transform: uppercase;
-            font-weight: 600;
-            letter-spacing: 0.5px;
-        }
+        .controls-group { display: flex; align-items: center; gap: 24px; }
+        .control-item { display: flex; flex-direction: column; gap: 6px; font-size: 11px; color: #8f95b2; }
+        .control-item strong { color: #fff; font-size: 12px; font-weight: 600; letter-spacing: 0.5px; }
         
         select, input[type="file"] { 
             background: #1e2235; 
@@ -76,157 +77,23 @@
             border: 1px solid #333955; 
             padding: 8px 14px; 
             border-radius: 6px; 
-            font-size: 13px; 
+            font-size: 12px; 
             outline: none;
             transition: all 0.2s ease;
         }
-        select:focus, input[type="file"]:hover {
-            border-color: #4dadff;
-            box-shadow: 0 0 8px rgba(77, 173, 255, 0.25);
-        }
-        select:disabled {
-            background: #141622;
-            color: #555a77;
-            border-color: #222538;
-            cursor: not-allowed;
-        }
+        select:focus, input[type="file"]:hover { border-color: #4dadff; box-shadow: 0 0 8px rgba(77, 173, 255, 0.25); }
+        select:disabled { background: #141622; color: #555a77; border-color: #222538; cursor: not-allowed; }
         
-        .btn-group { 
-            display: flex; 
-            gap: 12px; 
-        }
+        .btn-group { display: flex; gap: 12px; }
+        .btn { border: none; padding: 10px 18px; border-radius: 6px; font-weight: 600; cursor: pointer; font-size: 12px; transition: all 0.25s ease; display: inline-flex; align-items: center; gap: 6px; }
         
-        .btn { 
-            border: none; 
-            padding: 10px 18px; 
-            border-radius: 6px; 
-            font-weight: 600; 
-            cursor: pointer; 
-            font-size: 13px; 
-            transition: all 0.25s ease; 
-            display: inline-flex;
-            align-items: center;
-            gap: 6px;
-        }
+        .btn-download { background: linear-gradient(135deg, #4dadff, #2575fc); color: #ffffff; box-shadow: 0 4px 15px rgba(77, 173, 255, 0.3); }
+        .btn-download:hover:not(:disabled) { transform: translateY(-2px); box-shadow: 0 6px 20px rgba(77, 173, 255, 0.45); }
         
-        .btn-download { 
-            background: linear-gradient(135deg, #4dadff, #2575fc); 
-            color: #ffffff; 
-            box-shadow: 0 4px 15px rgba(77, 173, 255, 0.3);
-        }
-        .btn-download:hover:not(:disabled) { 
-            transform: translateY(-2px);
-            box-shadow: 0 6px 20px rgba(77, 173, 255, 0.45);
-        }
+        .btn-copy { background: #252940; color: #e2e8f0; border: 1px solid #3b4260; }
+        .btn-copy:hover:not(:disabled) { background: #2e3454; color: #ffffff; border-color: #4dadff; }
         
-        .btn-copy { 
-            background: #252940; 
-            color: #e2e8f0; 
-            border: 1px solid #3b4260; 
-        }
-        .btn-copy:hover:not(:disabled) { 
-            background: #2e3454;
-            color: #ffffff;
-            border-color: #4dadff;
-        }
-        
-        .btn:disabled {
-            background: #1b1e2e;
-            color: #4a4f6e;
-            border: 1px solid #25283d;
-            box-shadow: none;
-            transform: none;
-            cursor: not-allowed;
-        }
-        
-        /* 프리뷰 영역 전체 배치 바깥 여백 */
-        .preview-area { 
-            margin-top: 110px; 
-            padding: 20px; 
-            display: flex;
-            justify-content: center;
-        }
-
-        /* ⚠️ 오리지널 스크립트가 온전히 작동하도록 ID 그릇 유지 */
-        #output-wrapper {
-            width: 100%;
-            max-width: 850px;
-            box-sizing: border-box;
-        }
-
-        /* 🛠️ 실시간 수정/삭제 버튼을 원래 말풍선 훼손 없이 띄워주는 스타일 */
-        .bubble-wrapper {
-            position: relative;
-            display: flex;
-            align-items: center;
-            width: 100%;
-        }
-        
-        .bubble-actions { 
-            display: flex; 
-            gap: 6px; 
-            opacity: 0; 
-            transition: all 0.2s ease;
-            position: absolute;
-            right: 10px;
-            top: 50%;
-            transform: translateY(-50%);
-            z-index: 100;
-        }
-        
-        .bubble-wrapper:hover .bubble-actions { 
-            opacity: 1; 
-        }
-        
-        .action-mini-btn { 
-            background: #252940; 
-            color: #8f95b2; 
-            border: 1px solid #3b4260; 
-            padding: 4px 8px; 
-            border-radius: 5px; 
-            font-size: 11px; 
-            cursor: pointer; 
-        }
-        .action-mini-btn:hover { 
-            color: #ffffff; 
-            border-color: #4dadff; 
-        }
-        .action-mini-btn.delete-btn:hover { 
-            background: rgba(239, 68, 68, 0.2); 
-            border-color: #ef4444; 
-            color: #fca5a5; 
-        }
-
-
-        /* ==========================================
-           [2] 자바스크립트 내부 `generatePureHtmlHtml`과 
-               100% 동일하게 일치시킨 순정 복구 스타일
-        ========================================== */
-        .log-container { 
-            width: 100%; 
-            max-width: 800px; 
-            background-color: #1e1e1e; 
-            border-radius: 8px; 
-            padding: 20px; 
-            box-shadow: 0 4px 10px rgba(0,0,0,0.3); 
-            display: flex; 
-            flex-direction: column; 
-            gap: 12px; 
-            color: #e0e0e0; 
-            font-family: sans-serif; 
-            margin: 20px auto; 
-            box-sizing: border-box;
-        }
-        .chat-row { display: flex; align-items: flex-start; position: relative; margin: 0; padding: 0; } 
-        .avatar-box { width: 64px; height: 64px; margin-right: 15px; flex-shrink: 0; background-color: #1a1a1a; border-radius: 8px; overflow: hidden; }
-        .avatar-box img { width: 100%; height: 100%; object-fit: contain; margin: 0; padding: 0; }
-        .text-wrap { display: flex; flex-direction: column; flex-grow: 1; padding-right: 60px; } 
-        .char-name { font-weight: bold; font-size: 14px; margin-bottom: 6px; display: block; }
-        .bubbles-container { display: flex; flex-direction: column; gap: 4px; }
-        p.message-bubble { background-color: #141414; border-radius: 8px; padding: 8px 14px; font-size: 14px; line-height: 1.6; white-space: pre-wrap; word-break: break-all; color: #dddddd; margin: 0; width: fit-content; max-width: 100%; box-sizing: border-box; }
-        p.message-bubble.dice-bubble { background-color: #2a2a2a; color: #ffffff; border: 1px solid #444; }
-        .narration-box { background-color: #2d2d2d; border-radius: 8px; padding: 10px 14px; font-size: 14px; line-height: 1.6; white-space: pre-wrap; word-break: break-all; color: #ffffff; text-align: center; width: 100%; box-sizing: border-box; margin: 2px 0; }
-        .tab-tag { position: absolute; top: 2px; right: 2px; display: inline-block; padding: 2px 6px; font-size: 10px; border-radius: 4px; background-color: #333; color: #aaa; }
+        .btn:disabled { background: #1b1e2e; color: #4a4f6e; border: 1px solid #25283d; box-shadow: none; transform: none; cursor: not-allowed; }
     </style>
 </head>
 <body>
@@ -249,8 +116,8 @@
         </div>
 
         <div class="btn-group">
-            <button class="btn btn-copy" id="copy-btn" disabled>📋 HTML 복사</button>
-            <button class="btn btn-download" id="download-btn" disabled>💾 다운로드</button>
+            <button class="btn btn-copy" id="copy-btn" disabled>📋 HTML 코드 복사</button>
+            <button class="btn btn-download" id="download-btn" disabled>💾 HTML 다운로드</button>
         </div>
     </div>
 
