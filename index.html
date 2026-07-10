@@ -7,22 +7,51 @@
     <link rel="icon" type="image/png" href="fav.png">
     <style>
         /* ==========================================
-           [1] 순정 스타일 뼈대 (한 글자도 수정 없음)
+           [1] 순정 스타일 뼈대 및 테마 변수 정의
         ========================================== */
-        body { background-color: #0f111a; color: #e0e0e0; font-family: sans-serif; margin: 0; padding: 0; }
+        :root {
+            --bg-body: #0f111a;
+            --bg-container: #1e1e1e;
+            --bg-bubble: #141414;
+            --bg-dice: #2a2a2a;
+            --bg-narration: #2d2d2d;
+            --text-main: #e0e0e0;
+            --text-bubble: #dddddd;
+            --text-narration: #ffffff;
+            --text-dice: #ffffff;
+        }
+
+        /* 라이트 모드용 변수값 정의 */
+        body.light-theme-view {
+            --bg-body: #f0f2f5;
+            --bg-container: #ffffff;
+            --bg-bubble: #f1f3f5;
+            --bg-dice: #e9ecef;
+            --bg-narration: #e2e6ea;
+            --text-main: #212529;
+            --text-bubble: #343a40;
+            --text-narration: #1a1d20;
+            --text-dice: #1a1d20;
+        }
+
+        body { background-color: var(--bg-body); color: var(--text-main); font-family: sans-serif; margin: 0; padding: 0; transition: background-color 0.2s, color 0.2s; }
         
         /* 프리뷰 영역 배치 */
         .preview-area { margin-top: 100px; padding: 20px; }
         
-        .log-container { width: 100%; max-width: 800px; background-color: #1e1e1e; border-radius: 8px; padding: 20px !important; box-shadow: 0 4px 10px rgba(0,0,0,0.3); display: flex; flex-direction: column; gap: 12px; color: #e0e0e0; font-family: sans-serif; margin: 0 auto; }
+        .log-container { width: 100%; max-width: 800px; background-color: var(--bg-container); border-radius: 8px; padding: 20px !important; box-shadow: 0 4px 10px rgba(0,0,0,0.3); display: flex; flex-direction: column; gap: 12px; color: var(--text-main); font-family: sans-serif; margin: 0 auto; transition: background-color 0.2s, color 0.2s; }
         .chat-row { display: flex; align-items: flex-start; position: relative; } 
         .avatar-box{width:64px;height:64px;margin-right:15px;flex-shrink:0;background-color:#1a1a1a;border-radius:8px;overflow:hidden}
         .avatar-box img{width:100%;height:100%;object-fit:contain}
         .text-wrap { display: flex; flex-direction: column; flex-grow: 1; padding-right: 60px; } 
         .char-name { font-weight: bold; font-size: 14px; margin-bottom: 6px; display: block; }
         .bubbles-container { display: flex; flex-direction: column; gap: 4px; }
-        p.message-bubble { background-color: #141414; border-radius: 8px; padding: 8px 14px !important; font-size: 14px; line-height: 1.6; white-space: pre-wrap; word-break: break-all; color: #dddddd; margin: 0; width: fit-content; max-width: 100%; box-sizing: border-box; }
-        .narration-box { background-color: #2d2d2d; border-radius: 8px; padding: 10px 14px !important; font-size: 14px; line-height: 1.6; white-space: pre-wrap; word-break: break-all; color: #ffffff; text-align: center; width: 100%; box-sizing: border-box; margin: 2px 0; }
+        p.message-bubble { background-color: var(--bg-bubble); border-radius: 8px; padding: 8px 14px !important; font-size: 14px; line-height: 1.6; white-space: pre-wrap; word-break: break-all; color: var(--text-bubble); margin: 0; width: fit-content; max-width: 100%; box-sizing: border-box; transition: background-color 0.2s, color 0.2s; }
+        
+        /* 주사위 전용 밝은 말풍선 스타일 */
+        p.message-bubble.dice-bubble { background-color: var(--bg-dice); color: var(--text-dice); }
+        
+        .narration-box { background-color: var(--bg-narration); border-radius: 8px; padding: 10px 14px !important; font-size: 14px; line-height: 1.6; white-space: pre-wrap; word-break: break-all; color: var(--text-narration); text-align: center; width: 100%; box-sizing: border-box; margin: 2px 0; transition: background-color 0.2s, color 0.2s; }
         .tab-tag { position: absolute; top: 2px; right: 2px; display: inline-block; padding: 2px 6px; font-size: 10px; border-radius: 4px; background-color: #333; color: #aaa;}
         
         p.message-bubble { position: relative; group: hover; }
@@ -65,6 +94,8 @@
             -webkit-text-fill-color: transparent;
             text-shadow: 0 2px 10px rgba(77, 173, 255, 0.2);
             letter-spacing: 0.5px;
+            white-space: nowrap;
+            flex-shrink: 0;
         }
         
         .controls-group { display: flex; align-items: center; gap: 24px; }
@@ -75,17 +106,20 @@
             background: #1e2235; 
             color: #ffffff; 
             border: 1px solid #333955; 
-            padding: 8px 14px; 
+            padding: 0px 14px; 
+            height: 36px;
+            box-sizing: border-box;
             border-radius: 6px; 
             font-size: 12px; 
             outline: none;
             transition: all 0.2s ease;
+            line-height: 34px;
         }
         select:focus, input[type="file"]:hover { border-color: #4dadff; box-shadow: 0 0 8px rgba(77, 173, 255, 0.25); }
         select:disabled { background: #141622; color: #555a77; border-color: #222538; cursor: not-allowed; }
         
         .btn-group { display: flex; gap: 12px; }
-        .btn { border: none; padding: 10px 18px; border-radius: 6px; font-weight: 600; cursor: pointer; font-size: 12px; transition: all 0.25s ease; display: inline-flex; align-items: center; gap: 6px; }
+        .btn { border: none; padding: 10px 18px; border-radius: 6px; font-weight: 600; cursor: pointer; font-size: 12px; transition: all 0.25s ease; display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; flex-shrink: 0;}
         
         .btn-download { background: linear-gradient(135deg, #4dadff, #2575fc); color: #ffffff; box-shadow: 0 4px 15px rgba(77, 173, 255, 0.3); }
         .btn-download:hover:not(:disabled) { transform: translateY(-2px); box-shadow: 0 6px 20px rgba(77, 173, 255, 0.45); }
@@ -194,6 +228,78 @@
         }
         .patch-date { font-size: 11px; color: #555a77; font-weight: normal; }
         .patch-item ul { margin: 4px 0 0 0; padding-left: 16px; color: #9fa3af; font-size: 12.5px; }
+    
+        /* ==========================================
+           [추가] 반응형 미디어 쿼리 (창이 좁아질 때)
+        ========================================== */
+        @media (max-width: 950px) {
+            .toolbar {
+                height: auto;
+                flex-direction: column;
+                padding: 15px 20px;
+                gap: 12px;
+                align-items: stretch;
+            }
+
+            .toolbar h2 {
+                text-align: center;
+                font-size: 16px;
+            }
+
+            .controls-group {
+                flex-direction: row;
+                gap: 12px;
+                justify-content: space-between;
+            }
+
+            .control-item {
+                flex: 1;
+                min-width: 0;
+            }
+
+            select, input[type="file"] {
+                width: 100%;
+                box-sizing: border-box;
+                padding: 0px 10px;
+                height: 32px;
+                font-size: 11px;
+                line-height: 30px;
+            }
+
+            .btn-group {
+                justify-content: center;
+                width: 100%;
+            }
+
+            .btn {
+                flex: 1;
+                justify-content: center;
+                padding: 8px 12px;
+                font-size: 11px;
+            }
+
+            /* 툴바가 늘어난 만큼 프리뷰 영역의 상단 여백도 유연하게 늘려줍니다 */
+            .preview-area {
+                margin-top: 180px; 
+            }
+        }
+
+        /* 스마트폰 세로 모드처럼 극단적으로 좁을 때 (500px 이하) */
+        @media (max-width: 500px) {
+            .controls-group {
+                flex-direction: column;
+                gap: 8px;
+            }
+            
+            .preview-area {
+                margin-top: 240px;
+            }
+            
+            .info-card {
+                width: calc(100vw - 48px); /* 화면에서 벗어나지 않게 */
+                right: 0;
+            }
+        }
     </style>
 </head>
 <body>
@@ -203,12 +309,19 @@
         <div class="controls-group">
             <div class="control-item">
                 <strong>1. 백업 파일 업로드</strong>
-                <input type="file" id="html-file-picker" accept=".html,.txt">
+                <input type="file" id="html-file-picker" accept=".html">
             </div>
             <div class="control-item">
                 <strong>2. 나레이션 캐릭터 지정</strong>
                 <select id="narration-select" disabled>
                     <option value="">-- 파일 먼저 업로드 --</option>
+                </select>
+            </div>
+            <div class="control-item">
+                <strong>3. 테마 선택</strong>
+                <select id="theme-select">
+                    <option value="dark">다크 모드</option>
+                    <option value="light">라이트 모드</option>
                 </select>
             </div>
         </div>
@@ -246,7 +359,6 @@
     <script src="info-data.js"></script>
 
     <script>
-        // 페이지가 열릴 때 데이터를 읽어와 화면에 뿌려줌
         document.addEventListener("DOMContentLoaded", () => {
             renderHelp();
             renderPatchNotes();
