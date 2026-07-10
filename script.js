@@ -1,45 +1,19 @@
 let globScrapedLogs = null;
 let globIncludeChatter = false;
-let globLoadedFileText = ""; // 업로드된 파일 텍스트 임시 저장
+let globLoadedFileText = ""; 
 let globOriginFileName = ""; 
+// ✨ [추가] 파싱된 로그 데이터를 전역에서 관리하여 수정 내역을 보존합니다.
+let globParsedLogs = null; 
 
-// 파일 업로드 감지 리스너
-document.getElementById('html-file-picker').addEventListener('change', (e) => {
-    const file = e.target.files[0];
-    if (!file) return;
-
-    globOriginFileName = file.name;
-
-    const reader = new FileReader();
-    reader.onload = function(evt) {
-        globLoadedFileText = evt.target.result;
-        populateNarrationDropdown();
-        processAndRender();
-    };
-    reader.readAsText(file, "UTF-8");
-});
-
-// 테마 변경 감지 리스너 (화면 뷰 실시간 전환 및 소스 갱신)
-document.getElementById('theme-select').addEventListener('change', (e) => {
-    const selectedTheme = e.target.value;
-    if (selectedTheme === 'light') {
-        document.body.classList.add('light-theme-view');
-    } else {
-        document.body.classList.remove('light-theme-view');
-    }
-    // 코드가 로드되어 있다면 추출 파일 내부 코드도 실시간 변경 적용하기 위해 재반영
-    if (globLoadedFileText) {
-        processAndRender();
-    }
-});
-
-// 1. 확장 프로그램으로부터 순수 데이터 수신
+// 1. 확장 프로그램으로부터 데이터 수신
 window.addEventListener('message', function (event) {
     if (event.data && event.data.type === 'CCFOLIA_RAW_DATA') {
         event.source.postMessage({ type: 'CCFOLIA_DATA_RECEIVED' }, event.origin);
         
         globScrapedLogs = event.data.payload.collectedLogs;
         globIncludeChatter = event.data.payload.includeChatter;
+        
+        populateNarrationDropdown();
         
         document.getElementById('output-wrapper').innerHTML = `
             <h3 style="text-align: center; margin-top: 100px; color: #4dadff;">
@@ -49,12 +23,67 @@ window.addEventListener('message', function (event) {
     }
 });
 
+// 2. 파일 업로드 감지 리스너
+document.getElementById('html-file-picker').addEventListener('change', (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+
+    globOriginFileName = file.name;
+
+    const reader = new FileReader();
+    reader.onload = function(evt) {
+        globLoadedFileText = evt.target.result;
+        
+        // ✨ 파일을 처음 올렸을 때만 '최초 1회' 파싱을 수행합니다.
+        initialParseRawText(); 
+        
+        // 파싱이 끝났으니 화면을 그립니다.
+        refreshContent();
+    };
+    reader.readAsText(file, "UTF-8");
+});
+
+// 3. 테마 변경 감지 리스너
+document.getElementById('theme-select').addEventListener('change', (e) => {
+    const selectedTheme = e.target.value;
+    if (selectedTheme === 'light') {
+        document.body.classList.add('light-theme-view');
+    } else {
+        document.body.classList.remove('light-theme-view');
+    }
+    
+    // ✨ 다시 처음부터 파싱하지 않고, 저장된 데이터로 화면만 새로 고칩니다.
+    if (globParsedLogs) {
+        refreshContent();
+    }
+});
+
+// 4. 나레이션 변경 감지 리스너
+document.getElementById('narration-select').addEventListener('change', () => {
+    if (globParsedLogs) {
+        // ✨ 나레이션 캐릭터가 바뀌었으므로 기존 데이터의 속성(isNarration)만 업데이트합니다.
+        const narrationName = document.getElementById('narration-select').value.trim();
+        
+        globParsedLogs.forEach(log => {
+            // 시스템 마크나 기본 지문 기호("-")가 아닌 경우에만 체크
+            if (!log.isSystem && log.name !== "-") {
+                log.isNarration = (narrationName && log.name === narrationName);
+            }
+        });
+        
+        // 데이터 업데이트 후 화면 갱신
+        refreshContent();
+    }
+});
+
+// 초기 대기 메시지
 document.getElementById('output-wrapper').innerHTML = `
     <h3 style="text-align: center; margin-top: 100px; color: #aaa;">
         ⏳ 확장 프로그램에서 추출 시작 버튼을 눌러주세요...
     </h3>
 `;
 
+// 나레이션 드롭다운 생성
 function populateNarrationDropdown() {
     const selectEl = document.getElementById('narration-select');
     if (!globScrapedLogs) return;
@@ -71,25 +100,17 @@ function populateNarrationDropdown() {
     });
 
     selectEl.innerHTML = dropdownOptions;
-    if (globLoadedFileText) {
-        selectEl.disabled = false;
-    } else {
-        selectEl.disabled = true;
-    }
+    selectEl.disabled = false;
 }
 
-document.getElementById('narration-select').addEventListener('change', () => {
-    if (globLoadedFileText) {
-        processAndRender();
-    }
-});
-
-function processAndRender() {
+// ✨ [구조 개선] 최초 1회만 실행되어 원본 HTML을 배열 데이터로 변환하는 함수
+function initialParseRawText() {
     if (!globScrapedLogs || !globLoadedFileText) return;
 
     const scraperArray = JSON.parse(JSON.stringify(Object.values(globScrapedLogs)));
-    const finalOrderedLogs = [];
-    const narrationName = document.getElementById('narration-select').value;
+    globParsedLogs = []; // 전역 배열 초기화
+    
+    const narrationName = document.getElementById('narration-select').value.trim();
 
     const pTagRegex = /<p[^>]*>([\s\S]*?)<\/p>/gi;
     const spanRegex = /<span>\s*\[([^\]]+)\]\s*<\/span>\s*<span>\s*([\s\S]*?)\s*<\/span>\s*:\s*<span>\s*([\s\S]*?)\s*<\/span>/i;
@@ -134,12 +155,13 @@ function processAndRender() {
             });
         }
 
-        const isNarration = (narrationName && fileName === narrationName.trim());
+        const isNarration = (narrationName && fileName === narrationName);
         const isSystem = ["System", "시스템", "system"].includes(fileName);
 
         if (matchedLog) {
             matchedLog.used = true;
-            finalOrderedLogs.push({
+            globParsedLogs.push({
+                id: Math.random().toString(36).substr(2, 9), // 대화 고유 ID 부여
                 tabName: fileTab,
                 name: matchedLog.name,
                 imgUrl: matchedLog.imgUrl,
@@ -149,7 +171,8 @@ function processAndRender() {
                 isSystem: isSystem
             });
         } else {
-            finalOrderedLogs.push({
+            globParsedLogs.push({
+                id: Math.random().toString(36).substr(2, 9),
                 tabName: fileTab,
                 name: fileName,
                 imgUrl: "",
@@ -160,11 +183,14 @@ function processAndRender() {
             });
         }
     }
-
-    renderPreview(finalOrderedLogs);
 }
 
-// 추출용 독립적 HTML 스타일 생성기 (선택된 테마 색상으로 고정 주입)
+// ✨ [구조 개선] 현재 메모리에 들고 있는 데이터(globParsedLogs)를 기반으로 화면을 다시 그려주는 제어 핸들러
+function refreshContent() {
+    if (!globParsedLogs) return;
+    renderPreview(globParsedLogs);
+}
+
 function generatePureHtmlHtml(bodyContent) {
     const currentTheme = document.getElementById('theme-select').value;
     const colors = THEME_STYLES[currentTheme] || THEME_STYLES.dark;
@@ -190,14 +216,15 @@ function renderPreview(logs) {
     let htmlBody = `<div class="log-container">`;
     let currentGroup = null;
 
+    // 대화 그룹(연속된 말풍선) 렌더링
     function closeChatGroup(group) {
-        let bubblesHtml = group.messages.map((msg, subIdx) => {
-            const isDice = msg.includes('＞');
+        let bubblesHtml = group.messages.map((msgObj) => {
+            const isDice = msgObj.message.includes('＞');
             const diceClass = isDice ? ' dice-bubble' : '';
             
             return `
-            <div class="bubble-wrapper" data-group-id="${group.id}" data-sub-idx="${subIdx}">
-                <p class="message-bubble${diceClass}">${msg}</p>
+            <div class="bubble-wrapper" data-log-id="${msgObj.id}">
+                <p class="message-bubble${diceClass}">${msgObj.message}</p>
                 <div class="bubble-actions">
                     <button class="action-mini-btn edit-btn">수정</button>
                     <button class="action-mini-btn delete-btn">삭제</button>
@@ -206,7 +233,7 @@ function renderPreview(logs) {
         }).join('');
 
         return `
-        <div class="chat-row" id="group-${group.id}">
+        <div class="chat-row">
             ${group.tagHtml || ''}
             <div class="avatar-box">${group.imgUrl ? `<img src="${group.imgUrl}">` : ''}</div>
             <div class="text-wrap">
@@ -216,19 +243,17 @@ function renderPreview(logs) {
         </div>`;
     }
 
-    let groupIdCounter = 0;
-
     logs.forEach((log) => {
         const tagHtml = (log.tabName === '메인') ? '' : `<span class="tab-tag">${log.tabName}</span>`;
 
+        // 나레이션이나 시스템 메시지인 경우
         if (log.isSystem || log.isNarration || log.name === "-") {
             if (currentGroup) { htmlBody += closeChatGroup(currentGroup); currentGroup = null; }
             
-            groupIdCounter++;
             htmlBody += `
-            <div class="chat-row" id="group-${groupIdCounter}">
+            <div class="chat-row">
                 ${tagHtml}
-                <div class="bubble-wrapper" data-group-id="${groupIdCounter}" data-sub-idx="0" style="width:100%;">
+                <div class="bubble-wrapper" data-log-id="${log.id}" style="width:100%;">
                     <div class="narration-box">${log.message}</div>
                     <div class="bubble-actions" style="position:absolute; right:10px; top:5px;">
                         <button class="action-mini-btn edit-btn">수정</button>
@@ -239,19 +264,18 @@ function renderPreview(logs) {
             return;
         }
 
+        // 연속된 같은 캐릭터의 대화 그룹화
         if (currentGroup && currentGroup.imgUrl === log.imgUrl && currentGroup.tabName === log.tabName && currentGroup.name === log.name) {
-            currentGroup.messages.push(log.message);
+            currentGroup.messages.push({ id: log.id, message: log.message });
         } else {
             if (currentGroup) htmlBody += closeChatGroup(currentGroup);
-            groupIdCounter++;
             currentGroup = { 
-                id: groupIdCounter,
                 imgUrl: log.imgUrl, 
                 tabName: log.tabName, 
                 name: log.name, 
                 color: log.color, 
                 tagHtml: tagHtml, 
-                messages: [log.message] 
+                messages: [{ id: log.id, message: log.message }] 
             };
         }
     });
@@ -262,80 +286,87 @@ function renderPreview(logs) {
     const wrapper = document.getElementById('output-wrapper');
     wrapper.innerHTML = htmlBody;
 
+    // 🗑️ 삭제 버튼 리스너 (데이터 전역 배열 동기화 포함)
     wrapper.querySelectorAll('.delete-btn').forEach(btn => {
         btn.addEventListener('click', (e) => {
             const wrapperDiv = e.target.closest('.bubble-wrapper');
-            const rowDiv = e.target.closest('.chat-row');
-            wrapperDiv.remove();
+            const logId = wrapperDiv.getAttribute('data-log-id');
             
-            const remainingBubbles = rowDiv.querySelectorAll('.bubble-wrapper');
-            if (remainingBubbles.length === 0) {
-                rowDiv.remove();
-            }
-            updateFinalSource();
+            // ✨ 전역 변수 데이터 배열에서 해당 대화 완전 삭제
+            globParsedLogs = globParsedLogs.filter(log => log.id !== logId);
+            
+            // 데이터가 바뀐 상태로 프리뷰 화면만 새로고침
+            refreshContent();
         });
     });
 
+    // ✏️ 수정 버튼 리스너 (데이터 전역 배열 동기화 포함)
     wrapper.querySelectorAll('.edit-btn').forEach(btn => {
         btn.addEventListener('click', (e) => {
             const wrapperDiv = e.target.closest('.bubble-wrapper');
+            const logId = wrapperDiv.getAttribute('data-log-id');
             const targetTextEl = wrapperDiv.querySelector('.message-bubble') || wrapperDiv.querySelector('.narration-box');
             
             const oldText = targetTextEl.innerText;
             const newText = prompt("✏️ 수정할 내용을 입력하세요:", oldText);
             
             if (newText !== null && newText.trim() !== "") {
-                targetTextEl.innerText = newText.trim();
+                const cleanedText = newText.trim();
                 
-                if (targetTextEl.classList.contains('message-bubble')) {
-                    if (newText.includes('＞')) {
-                        targetTextEl.classList.add('dice-bubble');
-                    } else {
-                        targetTextEl.classList.remove('dice-bubble');
-                    }
+                // ✨ 전역 변수 데이터 배열을 찾아 텍스트 값 변경
+                const targetLog = globParsedLogs.find(log => log.id === logId);
+                if (targetLog) {
+                    targetLog.message = cleanedText;
                 }
-                updateFinalSource();
+                
+                // 데이터가 바뀐 상태로 프리뷰 화면만 새로고침
+                refreshContent();
             }
         });
     });
 
-    function updateFinalSource() {
-        const cloneContainer = wrapper.querySelector('.log-container').cloneNode(true);
-        cloneContainer.querySelectorAll('.bubble-actions').forEach(el => el.remove());
-        
-        const cleanHtmlContent = cloneContainer.outerHTML;
-        const fullHtmlSource = generatePureHtmlHtml(cleanHtmlContent);
-
-        const copyBtn = document.getElementById('copy-btn');
-        const downloadBtn = document.getElementById('download-btn');
-        
-        copyBtn.disabled = false;
-        downloadBtn.disabled = false;
-
-        const newDownload = downloadBtn.cloneNode(true);
-        downloadBtn.parentNode.replaceChild(newDownload, downloadBtn);
-        newDownload.addEventListener('click', () => {
-            const blob = new Blob([fullHtmlSource], { type: "text/html" });
-            const url = URL.createObjectURL(blob);
-            const a = document.createElement("a");
-            a.href = url;
-            
-            let finalFileName = globOriginFileName.replace(/\s*\[[\s\S]*$/, '').trim() || "cocofolia_processed_log";
-            a.download = `${finalFileName}.html`;
-            
-            document.body.appendChild(a); a.click(); document.body.removeChild(a);
-            URL.revokeObjectURL(url);
-        });
-
-        const newCopy = copyBtn.cloneNode(true);
-        copyBtn.parentNode.replaceChild(newCopy, copyBtn);
-        newCopy.addEventListener('click', async () => {
-            try {
-                await navigator.clipboard.writeText(fullHtmlSource);
-                alert("✨ 선택하신 테마가 반영된 HTML 전체 소스코드가 클립보드에 복사되었습니다!");
-            } catch (err) { alert("클립보드 복사에 실패했습니다."); }
-        });
-    }
-
+    // 💾 최종 소스코드 업데이트 함수 호출
     updateFinalSource();
+}
+
+function updateFinalSource() {
+    const wrapper = document.getElementById('output-wrapper');
+    const logContainer = wrapper.querySelector('.log-container');
+    if (!logContainer) return;
+
+    const cloneContainer = logContainer.cloneNode(true);
+    cloneContainer.querySelectorAll('.bubble-actions').forEach(el => el.remove());
+    
+    const cleanHtmlContent = cloneContainer.outerHTML;
+    const fullHtmlSource = generatePureHtmlHtml(cleanHtmlContent);
+
+    const copyBtn = document.getElementById('copy-btn');
+    const downloadBtn = document.getElementById('download-btn');
+    
+    copyBtn.disabled = false;
+    downloadBtn.disabled = false;
+
+    const newDownload = downloadBtn.cloneNode(true);
+    downloadBtn.parentNode.replaceChild(newDownload, downloadBtn);
+    newDownload.addEventListener('click', () => {
+        const blob = new Blob([fullHtmlSource], { type: "text/html" });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        
+        let finalFileName = globOriginFileName.replace(/\s*\[[\s\S]*$/, '').trim() || "cocofolia_processed_log";
+        a.download = `${finalFileName}.html`;
+        
+        document.body.appendChild(a); a.click(); document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+    });
+
+    const newCopy = copyBtn.cloneNode(true);
+    copyBtn.parentNode.replaceChild(newCopy, copyBtn);
+    newCopy.addEventListener('click', async () => {
+        try {
+            await navigator.clipboard.writeText(fullHtmlSource);
+            alert("✨ 선택하신 테마가 반영된 HTML 전체 소스코드가 클립보드에 복사되었습니다!");
+        } catch (err) { alert("클립보드 복사에 실패했습니다."); }
+    });
 }
