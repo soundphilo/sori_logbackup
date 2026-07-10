@@ -1,7 +1,8 @@
 let globScrapedLogs = null;
 let globIncludeChatter = false;
 let globLoadedFileText = ""; 
-let globOriginFileName = ""; // 원본 파일명을 저장할 전역 변수
+let globOriginFileName = ""; 
+// ✨ 파싱된 로그 데이터를 전역에서 관리하여 수정/삭제 내역을 철저히 보존합니다.
 let globParsedLogs = null; 
 
 // 1. 확장 프로그램으로부터 데이터 수신
@@ -27,17 +28,16 @@ document.getElementById('html-file-picker').addEventListener('change', (e) => {
     const file = e.target.files[0];
     if (!file) return;
 
-    // ✨ [수정] 파일명이 들어오는 즉시 전역 변수에 안전하게 저장합니다.
     globOriginFileName = file.name;
 
     const reader = new FileReader();
     reader.onload = function(evt) {
         globLoadedFileText = evt.target.result;
         
-        // 최초 1회 파싱 수행
+        // 파일을 처음 올렸을 때만 '최초 1회' 파싱을 수행하여 데이터를 전역 배열에 담습니다.
         initialParseRawText(); 
         
-        // 화면 갱신
+        // 파싱이 끝났으니 화면을 그립니다.
         refreshContent();
     };
     reader.readAsText(file, "UTF-8");
@@ -52,6 +52,7 @@ document.getElementById('theme-select').addEventListener('change', (e) => {
         document.body.classList.remove('light-theme-view');
     }
     
+    // 다시 처음부터 파싱하지 않고, 사용자가 수정한 내역이 남아있는 데이터로 화면만 새로 고칩니다.
     if (globParsedLogs) {
         refreshContent();
     }
@@ -60,6 +61,7 @@ document.getElementById('theme-select').addEventListener('change', (e) => {
 // 4. 나레이션 변경 감지 리스너
 document.getElementById('narration-select').addEventListener('change', () => {
     if (globParsedLogs) {
+        // 나레이션 캐릭터가 바뀌었으므로 기존 데이터의 속성(isNarration)만 업데이트합니다.
         const narrationName = document.getElementById('narration-select').value.trim();
         
         globParsedLogs.forEach(log => {
@@ -68,6 +70,7 @@ document.getElementById('narration-select').addEventListener('change', () => {
             }
         });
         
+        // 데이터 업데이트 후 화면 갱신
         refreshContent();
     }
 });
@@ -99,7 +102,7 @@ function populateNarrationDropdown() {
     selectEl.disabled = false;
 }
 
-// 최초 1회 텍스트 파싱 데이터 빌드
+// 최초 1회만 실행되어 원본 HTML을 배열 데이터 구조로 파싱하는 함수
 function initialParseRawText() {
     if (!globScrapedLogs || !globLoadedFileText) return;
 
@@ -157,7 +160,7 @@ function initialParseRawText() {
         if (matchedLog) {
             matchedLog.used = true;
             globParsedLogs.push({
-                id: Math.random().toString(36).substr(2, 9),
+                id: Math.random().toString(36).substr(2, 9), // 고유 식별자 ID 부여
                 tabName: fileTab,
                 name: matchedLog.name,
                 imgUrl: matchedLog.imgUrl,
@@ -181,12 +184,13 @@ function initialParseRawText() {
     }
 }
 
+// 현재 들고 있는 데이터(수정본 포함)를 기반으로 화면을 갱신하는 함수
 function refreshContent() {
     if (!globParsedLogs) return;
     renderPreview(globParsedLogs);
 }
 
-// 외부 홈페이지 스킨 보호형 스타일 빌더 (body 제거 버전)
+// ✨ 외부 스킨에 영향을 주지 않는 컴포넌트형 HTML 소스 생성 함수 (body 제거 완료)
 function generatePureHtmlHtml(bodyContent) {
     const currentTheme = document.getElementById('theme-select').value;
     const colors = THEME_STYLES[currentTheme] || THEME_STYLES.dark;
@@ -214,7 +218,7 @@ function generatePureHtmlHtml(bodyContent) {
     height: 64px; 
     margin-right: 15px; 
     flex-shrink: 0; 
-    background-color: ${colors.bubbleBg} !important; 
+    background-color: ${colors.bubbleBg} !important; /* ✨ 아바타 배경색도 테마와 자연스럽게 연동 */
     border-radius: 8px; 
     overflow: hidden; 
 }
@@ -267,6 +271,7 @@ p.message-bubble.dice-bubble {
 }
 </style>`;
 
+    // html, head, body 태그 없이 딱 스타일과 핵심 태그 덩어리만 반환합니다.
     return `${htmlStyles}${bodyContent}`;
 }
 
@@ -341,7 +346,7 @@ function renderPreview(logs) {
     const wrapper = document.getElementById('output-wrapper');
     wrapper.innerHTML = htmlBody;
 
-    // 삭제 버튼 리스너
+    // 🗑️ 삭제 버튼 리스너 (데이터 전역 배열 실시간 동기화)
     wrapper.querySelectorAll('.delete-btn').forEach(btn => {
         btn.addEventListener('click', (e) => {
             const wrapperDiv = e.target.closest('.bubble-wrapper');
@@ -352,7 +357,7 @@ function renderPreview(logs) {
         });
     });
 
-    // 수정 버튼 리스너
+    // ✏️ 수정 버튼 리스너 (데이터 전역 배열 실시간 동기화)
     wrapper.querySelectorAll('.edit-btn').forEach(btn => {
         btn.addEventListener('click', (e) => {
             const wrapperDiv = e.target.closest('.bubble-wrapper');
@@ -394,7 +399,6 @@ function updateFinalSource() {
     copyBtn.disabled = false;
     downloadBtn.disabled = false;
 
-    // ✨ [파일명 갱신 핵심] 다운로드 핸들러 내부에서 호출 시점의 최신 globOriginFileName을 실시간으로 파싱하도록 수정
     const newDownload = downloadBtn.cloneNode(true);
     downloadBtn.parentNode.replaceChild(newDownload, downloadBtn);
     newDownload.addEventListener('click', () => {
@@ -403,14 +407,8 @@ function updateFinalSource() {
         const a = document.createElement("a");
         a.href = url;
         
-        // ✨ 클릭한 순간에 전역 변수명(.html 확장자 제거 및 가공)을 읽어와 파일명으로 매칭합니다.
-        let baseName = "cocofolia_processed_log";
-        if (globOriginFileName) {
-            baseName = globOriginFileName.replace(/\.[^/.]+$/, ""); // 확장자(.html) 자르기
-            baseName = baseName.replace(/\s*\[[\s\S]*$/, '').trim(); // 뒤쪽 대괄호 꼬리표 자르기
-        }
-        
-        a.download = `${baseName}.html`;
+        let finalFileName = globOriginFileName.replace(/\s*\[[\s\S]*$/, '').trim() || "cocofolia_processed_log";
+        a.download = `${finalFileName}.html`;
         
         document.body.appendChild(a); a.click(); document.body.removeChild(a);
         URL.revokeObjectURL(url);
