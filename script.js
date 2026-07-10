@@ -13,6 +13,7 @@ document.getElementById('html-file-picker').addEventListener('change', (e) => {
     const reader = new FileReader();
     reader.onload = function(evt) {
         globLoadedFileText = evt.target.result;
+        populateNarrationDropdown();
         processAndRender();
     };
     reader.readAsText(file, "UTF-8");
@@ -39,8 +40,6 @@ window.addEventListener('message', function (event) {
         
         globScrapedLogs = event.data.payload.collectedLogs;
         globIncludeChatter = event.data.payload.includeChatter;
-        
-        populateNarrationDropdown();
         
         document.getElementById('output-wrapper').innerHTML = `
             <h3 style="text-align: center; margin-top: 100px; color: #4dadff;">
@@ -72,7 +71,11 @@ function populateNarrationDropdown() {
     });
 
     selectEl.innerHTML = dropdownOptions;
-    selectEl.disabled = false;
+    if (globLoadedFileText) {
+        selectEl.disabled = false;
+    } else {
+        selectEl.disabled = true;
+    }
 }
 
 document.getElementById('narration-select').addEventListener('change', () => {
