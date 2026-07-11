@@ -17,17 +17,13 @@ const getPureKey = (text) => {
 };
 
 function generatePureHtmlHtml(bodyContent) {
-    // 1. 현재 화면에서 선택된 테마 값을 가져오고, themes.js에 선언된 테마 색상 객체를 가져옵니다.
+    // 1. 선택된 테마 색상 데이터 가져오기
     const currentTheme = document.getElementById('theme-select').value;
     const colors = THEME_STYLES[currentTheme] || THEME_STYLES.dark;
     
-    // 2. index.html에 작성된 원래 <style> 태그 안의 텍스트 내용을 통째로 긁어옵니다.
-    const originStyleTag = document.querySelector('style');
-    const sharedStyles = originStyleTag ? originStyleTag.innerHTML : '';
-    
-    // 3. 일일이 글자를 치환할 필요 없이, 선택된 테마 색상들을 CSS 변수(:root)로 동적 생성합니다.
-    const dynamicThemeVariables = `
-:root {
+    // 2. 다른 전역 스타일 다 버리고, 오직 로그 박스(.log-container) 내부에서만 작동할 CSS 변수 블록만 생성
+    const dynamicThemeBlock = `
+.log-container {
     --bg-container: ${colors.containerBg};
     --bg-bubble: ${colors.bubbleBg};
     --bg-dice: ${colors.diceBg};
@@ -39,15 +35,8 @@ function generatePureHtmlHtml(bodyContent) {
 }
 `;
 
-    // 4. body 없이 테마 변수 + html에서 긁어온 순정 스타일 + 로그 본문(div)만 합쳐서 반환합니다.
-    return `
-<style>
-${dynamicThemeVariables}
-${sharedStyles}
-</style>
-${bodyContent}
-`;
-}
+    // 3. index.html의 스타일을 긁어올 필요 없이, 변수 블록과 본문(bodyContent)만 합쳐서 반환
+    return `<style>${dynamicThemeBlock}</style>${bodyContent}`;}
 // ==========================================
 // [3] 비즈니스 로직 및 파싱 엔진
 // ==========================================
