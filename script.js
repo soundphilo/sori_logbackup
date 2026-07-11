@@ -2,7 +2,6 @@ let globScrapedLogs = null;
 let globIncludeChatter = false;
 let globLoadedFileText = ""; 
 let globOriginFileName = ""; 
-// ✨ 파싱된 로그 데이터를 전역에서 관리하여 수정/삭제 내역을 철저히 보존합니다.
 let globParsedLogs = null; 
 
 // 1. 확장 프로그램으로부터 데이터 수신
@@ -407,7 +406,7 @@ function updateFinalSource() {
         const a = document.createElement("a");
         a.href = url;
         
-        let finalFileName = globOriginFileName.replace(/\s*\[[\s\S]*$/, '').trim() || "cocofolia_processed_log";
+        let finalFileName = globOriginFileName.replace(/\.[^/.]+$/, '').trim() || "cocofolia_processed_log";
         a.download = `${finalFileName}.html`;
         
         document.body.appendChild(a); a.click(); document.body.removeChild(a);
