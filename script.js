@@ -18,24 +18,15 @@ const getPureKey = (text) => {
 
 function generatePureHtmlHtml(bodyContent) {
     const currentTheme = document.getElementById('theme-select').value;
-    const colors = THEME_STYLES[currentTheme] || THEME_STYLES.dark;
-    
-    const htmlStyles = `
-<style>
-.log-container { width: 100%; max-width: 800px; background-color: ${colors.containerBg} !important; border-radius: 8px; padding: 20px !important; box-shadow: 0 4px 10px rgba(0,0,0,0.15); display: flex; flex-direction: column; gap: 12px; color: ${colors.textMain} !important; font-family: sans-serif; margin: 20px auto; box-sizing: border-box; }
-.chat-row { display: flex; align-items: flex-start; position: relative; width: 100%; box-sizing: border-box; } 
-.avatar-box { width: 64px; height: 64px; margin-right: 15px; flex-shrink: 0; background-color: ${colors.bubbleBg} !important; border-radius: 8px; overflow: hidden; }
-.avatar-box img { width: 100%; height: 100%; object-fit: contain; display: block; }
-.text-wrap { display: flex; flex-direction: column; flex-grow: 1; padding-right: 60px; min-width: 0; } 
-.char-name { font-weight: bold; font-size: 14px; margin-bottom: 6px; display: block; }
-.bubbles-container { display: flex; flex-direction: column; gap: 4px; width: 100%; }
-p.message-bubble { background-color: ${colors.bubbleBg} !important; border-radius: 8px; padding: 8px 14px !important; font-size: 14px; line-height: 1.6; white-space: pre-wrap; word-break: break-all; color: ${colors.textBubble} !important; margin: 0; width: fit-content; max-width: 100%; box-sizing: border-box; }
-p.message-bubble.dice-bubble { background-color: ${colors.diceBg} !important; color: ${colors.textDice} !important; }
-.narration-box { background-color: ${colors.narrationBg} !important; border-radius: 8px; padding: 10px 14px !important; font-size: 14px; line-height: 1.6; white-space: pre-wrap; word-break: break-all; color: ${colors.textNarration} !important; text-align: center; width: 100%; box-sizing: border-box; margin: 2px 0; }
-.tab-tag { position: absolute; top: 2px; right: 2px; display: inline-block; padding: 2px 6px; font-size: 10px; border-radius: 4px; background-color: #333 !important; color: #aaa !important; }
-</style>`;
+    const styleEl = document.getElementById('main-log-styles');
+    const sharedStyles = styleEl ? styleEl.innerHTML : '';
 
-    return `${htmlStyles}${bodyContent}`;
+    // 백업본 단독 파일 실행 시에도 선택했던 테마가 깨지지 않고 고정되도록 바디 클래스를 설정합니다.
+    const bodyClass = currentTheme === 'light' ? 'class="light-theme-view"' : '';
+    
+    return `
+<style>${sharedStyles}</style>
+<body ${bodyClass}>${bodyContent}</body>`;
 }
 
 // ==========================================
