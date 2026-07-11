@@ -21,12 +21,8 @@ function generatePureHtmlHtml(bodyContent) {
     const styleEl = document.getElementById('main-log-styles');
     const sharedStyles = styleEl ? styleEl.innerHTML : '';
 
-    // 백업본 단독 파일 실행 시에도 선택했던 테마가 깨지지 않고 고정되도록 바디 클래스를 설정합니다.
-    const bodyClass = currentTheme === 'light' ? 'class="light-theme-view"' : '';
-    
     return `
-<style>${sharedStyles}</style>
-<body ${bodyClass}>${bodyContent}</body>`;
+<style>${sharedStyles}</style>`;
 }
 
 // ==========================================
