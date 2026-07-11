@@ -317,11 +317,11 @@ document.getElementById('download-btn').addEventListener('click', () => {
     
     a.href = url;
 
-    // 🌟 [요청 반영] 정규식 방식을 사용하되, 가장 끝에 나오는 대괄호 쌍만 안전하게 제거하도록 수정
+    // 정규식 방식을 사용하되, 가장 끝에 나오는 대괄호 쌍만 제거
     let baseName = "cocofolia_processed_log";
     if (globOriginFileName) {
         baseName = globOriginFileName.replace(/\.[^/.]+$/, "");       // 1. .html 확장자 제거
-        baseName = baseName.replace(/\s*\[[^\]]+\]$/, '').trim();     // 2. 맨 마지막 [탭이름] 구조만 저격해서 제거
+        baseName = baseName.replace(/\[[^\]]+\]$/, '').trim();     // 2. 맨 마지막 [탭이름]만  제거
     }
     
     a.download = `${baseName || "cocofolia_processed_log"}.html`;
