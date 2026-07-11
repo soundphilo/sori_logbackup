@@ -128,16 +128,17 @@ function renderPreview(logs) {
     function closeChatGroup(group) {
         let bubblesHtml = group.messages.map((msgObj) => {
             const isDice = msgObj.message.includes('＞');
-            return `
-            <div class="bubble-wrapper" data-log-id="${msgObj.id}">
-                <p class="message-bubble" style="${bubbleStyle}">${msgObj.message}</p>
-                <div class="bubble-actions">
-                    <button class="action-mini-btn edit-btn">수정</button>
-                    <button class="action-mini-btn delete-btn">삭제</button>
-                </div>
-            </div>`;
-        }).join('');
-
+            const bubbleClass = isDice ? 'message-bubble dice-bubble' : 'message-bubble';
+        
+        return `
+        <div class="bubble-wrapper" data-log-id="${msgObj.id}">
+            <p class="${bubbleClass}">${msgObj.message}</p>
+            <div class="bubble-actions">
+                <button class="action-mini-btn edit-btn">수정</button>
+                <button class="action-mini-btn delete-btn">삭제</button>
+            </div>
+        </div>`;
+    }).join('');
         return `
         <div class="chat-row">
             ${group.tagHtml || ''}
