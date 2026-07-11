@@ -354,11 +354,12 @@
             renderHelp();
             renderPatchNotes();
         });
-        });
 
         function renderHelp() {
             const target = document.getElementById('help-list-target');
-            target.innerHTML = HELP_DATA.map(item => `<li>${item.text}</li>`).join('');
+            if (target && typeof HELP_DATA !== 'undefined') {
+                target.innerHTML = HELP_DATA.map(item => `<li>${item.text}</li>`).join('');
+            }
         }
 
         function renderPatchNotes() {
