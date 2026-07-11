@@ -113,13 +113,21 @@ function refreshContent() {
 function renderPreview(logs) {
     const currentTheme = document.getElementById('theme-select').value || 'dark';
     const colors = THEME_STYLES[currentTheme] || THEME_STYLES.dark;
-    let htmlBody = `<div class="log-container">`;
+    let htmlBody = `
+    <style>
+        ${COMMON_LOG_STYLE}
+        .log-container { background-color: ${colors.containerBg} !important; color: ${colors.textMain} !important; }
+        .avatar-box { background-color: ${colors.bubbleBg} !important; }
+        p.message-bubble { background-color: ${colors.bubbleBg} !important; color: ${colors.textBubble} !important; }
+        p.message-bubble.dice-bubble { background-color: ${colors.diceBg} !important; color: ${colors.textDice} !important; }
+        .narration-box { background-color: ${colors.narrationBg} !important; color: ${colors.textNarration} !important; }
+    </style>
+    <div class="log-container">`;
     let currentGroup = null;
 
     function closeChatGroup(group) {
         let bubblesHtml = group.messages.map((msgObj) => {
             const isDice = msgObj.message.includes('＞');
-            const bubbleStyle = isDice ? `background-color: ${colors.diceBg}; color: ${colors.textDice};` : `background-color: ${colors.bubbleBg}; color: ${colors.textBubble};`;
             return `
             <div class="bubble-wrapper" data-log-id="${msgObj.id}">
                 <p class="message-bubble" style="${bubbleStyle}">${msgObj.message}</p>
@@ -133,7 +141,7 @@ function renderPreview(logs) {
         return `
         <div class="chat-row">
             ${group.tagHtml || ''}
-            <div class="avatar-box" style="background-color: ${colors.bubbleBg};">${group.imgUrl ? `<img src="${group.imgUrl}">` : ''}</div>
+            <div class="avatar-box">${group.imgUrl ? `<img src="${group.imgUrl}">` : ''}</div>
             <div class="text-wrap">
                 <span class="char-name" style="color:${group.color}">${group.name}</span>
                 <div class="bubbles-container">${bubblesHtml}</div>
