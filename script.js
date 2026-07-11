@@ -111,16 +111,18 @@ function refreshContent() {
 }
 
 function renderPreview(logs) {
+    const currentTheme = document.getElementById('theme-select').value || 'dark';
+    const colors = THEME_STYLES[currentTheme] || THEME_STYLES.dark;
     let htmlBody = `<div class="log-container">`;
     let currentGroup = null;
 
     function closeChatGroup(group) {
         let bubblesHtml = group.messages.map((msgObj) => {
             const isDice = msgObj.message.includes('＞');
-            const diceClass = isDice ? ' dice-bubble' : '';
+            const bubbleStyle = isDice ? `background-color: ${colors.diceBg}; color: ${colors.textDice};` : `background-color: ${colors.bubbleBg}; color: ${colors.textBubble};`;
             return `
             <div class="bubble-wrapper" data-log-id="${msgObj.id}">
-                <p class="message-bubble${diceClass}">${msgObj.message}</p>
+                <p class="message-bubble" style="${bubbleStyle}">${msgObj.message}</p>
                 <div class="bubble-actions">
                     <button class="action-mini-btn edit-btn">수정</button>
                     <button class="action-mini-btn delete-btn">삭제</button>
@@ -131,7 +133,7 @@ function renderPreview(logs) {
         return `
         <div class="chat-row">
             ${group.tagHtml || ''}
-            <div class="avatar-box">${group.imgUrl ? `<img src="${group.imgUrl}">` : ''}</div>
+            <div class="avatar-box" style="background-color: ${colors.bubbleBg};">${group.imgUrl ? `<img src="${group.imgUrl}">` : ''}</div>
             <div class="text-wrap">
                 <span class="char-name" style="color:${group.color}">${group.name}</span>
                 <div class="bubbles-container">${bubblesHtml}</div>
