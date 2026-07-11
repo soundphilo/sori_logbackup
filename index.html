@@ -348,8 +348,12 @@
 
     <script>
         document.addEventListener("DOMContentLoaded", () => {
+            if (typeof COMMON_LOG_STYLE !== 'undefined') {
+                document.getElementById('dynamic-log-style').innerHTML = COMMON_LOG_STYLE;
+            }
             renderHelp();
             renderPatchNotes();
+        });
         });
 
         function renderHelp() {
