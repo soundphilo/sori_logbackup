@@ -17,11 +17,28 @@ const getPureKey = (text) => {
 };
 
 function generatePureHtmlHtml(bodyContent) {
-    // 1. 선택된 테마 색상 데이터 가져오기
+    // 1. 현재 선택된 테마 색상 데이터 가져오기
     const currentTheme = document.getElementById('theme-select').value;
     const colors = THEME_STYLES[currentTheme] || THEME_STYLES.dark;
     
-    // 2. 다른 전역 스타일 다 버리고, 오직 로그 박스(.log-container) 내부에서만 작동할 CSS 변수 블록만 생성
+    // 2. ✨ 핵심: index.html의 <style> 안에서 로그와 관련된 디자인 규칙들만 쏙 골라서 합칩니다.
+    const cssRules = Array.from(document.styleSheets[0].cssRules);
+    const logPureStyles = cssRules
+        .filter(rule => rule.selectorText && (
+            rule.selectorText.includes('.log-container') || 
+            rule.selectorText.includes('.chat-row') || 
+            rule.selectorText.includes('.avatar-box') || 
+            rule.selectorText.includes('.text-wrap') || 
+            rule.selectorText.includes('.char-name') || 
+            rule.selectorText.includes('.bubbles-container') || 
+            rule.selectorText.includes('.message-bubble') || 
+            rule.selectorText.includes('.narration-box') || 
+            rule.selectorText.includes('.tab-tag')
+        ))
+        .map(rule => rule.cssText)
+        .join('\n');
+    
+    // 3. 로그 박스 내부에서만 작동할 CSS 변수 블록 생성
     const dynamicThemeBlock = `
 .log-container {
     --bg-container: ${colors.containerBg};
@@ -35,8 +52,8 @@ function generatePureHtmlHtml(bodyContent) {
 }
 `;
 
-    // 3. index.html의 스타일을 긁어올 필요 없이, 변수 블록과 본문(bodyContent)만 합쳐서 반환
-    return `<style>${dynamicThemeBlock}</style>${bodyContent}`;}
+    // 4. 최종 결과물 반환 (<body> 태그 없이 변수 + 레이아웃 스타일 + 본문)
+    return `<style>${dynamicThemeBlock}${logPureStyles}</style>${bodyContent}`;}
 // ==========================================
 // [3] 비즈니스 로직 및 파싱 엔진
 // ==========================================
