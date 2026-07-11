@@ -11,30 +11,23 @@ let globParsedLogs = null;
 // [2] 유틸리티 및 데이터 가공 함수
 // ==========================================
 
-// 💡 [2번 반영] 기존 정규식 및 치환 로직 그대로 유지
 const getPureKey = (text) => {
     if (!text) return "";
     return text.replace(/&#?[a-z0-9]+;/gi, '').replace(/<[^>]*>/g, '').replace(/[^\p{L}\p{N}]+/gu, '');
 };
 
-// 💡 [4번 반영] script.js 내부 테마 선언을 지우고, 외부 themes.js의 THEME_STYLES를 참조하도록 복구
 function generatePureHtmlHtml(bodyContent) {
     const currentTheme = document.getElementById('theme-select').value;
     const colors = THEME_STYLES[currentTheme] || THEME_STYLES.dark;
     
     const htmlStyles = `
 <style>
-.log-container { width: 100%; max-width: 800px; background-color: ${colors.containerBg} !important; border-radius: 8px; padding: 20px !important; box-shadow: 0 4px 10px rgba(0,0,0,0.15); display: flex; flex-direction: column; gap: 12px; color: ${colors.textMain} !important; font-family: sans-serif; margin: 20px auto; box-sizing: border-box; }
-.chat-row { display: flex; align-items: flex-start; position: relative; width: 100%; box-sizing: border-box; } 
-.avatar-box { width: 64px; height: 64px; margin-right: 15px; flex-shrink: 0; background-color: ${colors.bubbleBg} !important; border-radius: 8px; overflow: hidden; }
-.avatar-box img { width: 100%; height: 100%; object-fit: contain; display: block; }
-.text-wrap { display: flex; flex-direction: column; flex-grow: 1; padding-right: 60px; min-width: 0; } 
-.char-name { font-weight: bold; font-size: 14px; margin-bottom: 6px; display: block; }
-.bubbles-container { display: flex; flex-direction: column; gap: 4px; width: 100%; }
-p.message-bubble { background-color: ${colors.bubbleBg} !important; border-radius: 8px; padding: 8px 14px !important; font-size: 14px; line-height: 1.6; white-space: pre-wrap; word-break: break-all; color: ${colors.textBubble} !important; margin: 0; width: fit-content; max-width: 100%; box-sizing: border-box; }
+${COMMON_LOG_STYLE}
+.log-container { background-color: ${colors.containerBg} !important; color: ${colors.textMain} !important; }
+.avatar-box { background-color: ${colors.bubbleBg} !important; }
+p.message-bubble { background-color: ${colors.bubbleBg} !important; color: ${colors.textBubble} !important; }
 p.message-bubble.dice-bubble { background-color: ${colors.diceBg} !important; color: ${colors.textDice} !important; }
-.narration-box { background-color: ${colors.narrationBg} !important; border-radius: 8px; padding: 10px 14px !important; font-size: 14px; line-height: 1.6; white-space: pre-wrap; word-break: break-all; color: ${colors.textNarration} !important; text-align: center; width: 100%; box-sizing: border-box; margin: 2px 0; }
-.tab-tag { position: absolute; top: 2px; right: 2px; display: inline-block; padding: 2px 6px; font-size: 10px; border-radius: 4px; background-color: #333 !important; color: #aaa !important; }
+.narration-box { background-color: ${colors.narrationBg} !important; color: ${colors.textNarration} !important; }
 </style>`;
 
     return `${htmlStyles}${bodyContent}`;
@@ -56,23 +49,17 @@ function populateNarrationDropdown() {
     let dropdownOptions = `<option value="">-- 선택 안함 (지문 없음) --</option>`;
     uniqueNames.forEach(name => { dropdownOptions += `<option value="${name}">${name}</option>`; });
     selectEl.innerHTML = dropdownOptions;
+    
+    // 💡 [수정] 나레이션 드롭다운 활성화 조건 변경: 확장 프로그램 연동 시점이 아닌 '실제 파일 업로드 완료 시점'으로 이동하기 위해 여기서는 해제하지 않음
 }
 
 function initialParseRawText() {
     if (!globScrapedLogs || !globLoadedFileText) return;
 
+    const scraperArray = JSON.parse(JSON.stringify(Object.values(globScrapedLogs)));
     globParsedLogs = []; 
-    const narrationName = document.getElementById('narration-select').value.trim();
     
-    // 💡 [1번 반영] O(1) 초고속 매칭을 위한 확장 프로그램 로그 데이터 Map 변환
-    const scraperMap = new Map();
-    Object.values(globScrapedLogs).forEach(log => {
-        const key = `${log.tabName}_${log.name}_${getPureKey(log.matchKey)}`;
-        if (!scraperMap.has(key)) scraperMap.set(key, []);
-        scraperMap.get(key).push(log);
-    });
-
-    // 💡 [2번 반영] 원래 가지고 계시던 원본 파싱 정규식 그대로 적용
+    const narrationName = document.getElementById('narration-select').value.trim();
     const pTagRegex = /<p[^>]*>([\s\S]*?)<\/p>/gi;
     const spanRegex = /<span>\s*\[([^\]]+)\]\s*<\/span>\s*<span>\s*([\s\S]*?)\s*<\/span>\s*:\s*<span>\s*([\s\S]*?)\s*<\/span>/i;
 
@@ -95,18 +82,9 @@ function initialParseRawText() {
 
         if (!globIncludeChatter && fileTab === '잡담') continue;
 
-        // 💡 [1번 반영] 무거운 순회 대신 Map 캐시를 통한 즉시 탐색
-        const targetKey = `${fileTab}_${fileName}_${fileMatchKey}`;
-        let matchedLog = null;
-        
-        if (scraperMap.has(targetKey)) {
-            const list = scraperMap.get(targetKey);
-            const unusedIndex = list.findIndex(l => !l.used);
-            if (unusedIndex !== -1) {
-                matchedLog = list[unusedIndex];
-                matchedLog.used = true;
-            }
-        }
+        let matchedLog = scraperArray.find(log => !log.used && log.tabName === fileTab && log.name === fileName && getPureKey(log.matchKey) === fileMatchKey);
+        if (!matchedLog) matchedLog = scraperArray.find(log => !log.used && log.name === fileName && getPureKey(log.matchKey) === fileMatchKey);
+        if (!matchedLog) matchedLog = scraperArray.find(log => !log.used && getPureKey(log.matchKey) === fileMatchKey);
 
         const isNarration = (narrationName && fileName === narrationName);
         const isSystem = ["System", "시스템", "system"].includes(fileName);
@@ -122,6 +100,7 @@ function initialParseRawText() {
             isSystem: isSystem
         };
 
+        if (matchedLog) matchedLog.used = true;
         globParsedLogs.push(logPayload);
     }
 }
@@ -202,42 +181,27 @@ function renderPreview(logs) {
     document.getElementById('download-btn').disabled = false;
 }
 
-// 💡 [3번 반영] 수정/삭제 시 refreshContent() 호출로 인한 전체 렌더링 부하를 없애고 DOM 마디만 개별 제어
 function bindPreviewActions(wrapper) {
-    wrapper.addEventListener('click', (e) => {
-        const target = e.target;
-        if (!target.classList.contains('action-mini-btn')) return;
-
-        const bubbleWrapper = target.closest('.bubble-wrapper');
-        const logId = bubbleWrapper.getAttribute('data-log-id');
-
-        // [삭제 버지니스 로직 처리]
-        if (target.classList.contains('delete-btn')) {
+    wrapper.querySelectorAll('.delete-btn').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+            const logId = e.target.closest('.bubble-wrapper').getAttribute('data-log-id');
             globParsedLogs = globParsedLogs.filter(log => log.id !== logId);
+            refreshContent();
+        });
+    });
+
+    wrapper.querySelectorAll('.edit-btn').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+            const logId = e.target.closest('.bubble-wrapper').getAttribute('data-log-id');
+            const targetTextEl = e.target.closest('.bubble-wrapper').querySelector('.message-bubble, .narration-box');
             
-            const chatRow = bubbleWrapper.closest('.chat-row');
-            const container = bubbleWrapper.closest('.bubbles-container');
-            
-            if (container && container.children.length > 1) {
-                bubbleWrapper.remove();
-            } else {
-                chatRow.remove();
-            }
-        } 
-        
-        // [수정 비즈니스 로직 처리]
-        else if (target.classList.contains('edit-btn')) {
-            const textEl = bubbleWrapper.querySelector('.message-bubble, .narration-box');
-            const newText = prompt("✏️ 수정할 내용을 입력하세요:", textEl.innerText);
-            
+            const newText = prompt("✏️ 수정할 내용을 입력하세요:", targetTextEl.innerText);
             if (newText !== null && newText.trim() !== "") {
-                const trimmed = newText.trim();
                 const targetLog = globParsedLogs.find(log => log.id === logId);
-                if (targetLog) targetLog.message = trimmed;
-                
-                textEl.innerText = trimmed; // DOM 대상 텍스트만 실시간 교체
+                if (targetLog) targetLog.message = newText.trim();
+                refreshContent();
             }
-        }
+        });
     });
 }
 
@@ -255,6 +219,7 @@ function buildFinalHtmlSource() {
 // [4] 이벤트 리스너 및 초기화 (Global Events)
 // ==========================================
 
+// 초기 상태: 제어 컨트롤들 명시적 잠금 활성화
 document.getElementById('theme-select').disabled = true;
 document.getElementById('narration-select').disabled = true;
 
@@ -291,6 +256,7 @@ document.getElementById('html-file-picker').addEventListener('change', (e) => {
         globLoadedFileText = evt.target.result;
         initialParseRawText(); 
         
+        // 🌟 [핵심 변경 사항]: 파일이 정상적으로 업로드되면 테마 및 나레이션 선택창 활성화
         document.getElementById('theme-select').disabled = false;
         document.getElementById('narration-select').disabled = false;
         
