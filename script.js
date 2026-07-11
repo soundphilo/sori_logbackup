@@ -8,20 +8,14 @@ let globOriginFileName = "";
 let globParsedLogs = null; 
 
 // ==========================================
-// [2] 유틸리티 및 데이터 가공 함수 (Pure Functions)
+// [2] 유틸리티 및 데이터 가공 함수
 // ==========================================
 
-/**
- * 텍스트 매칭을 위한 순수 키 추출기
- */
 const getPureKey = (text) => {
     if (!text) return "";
     return text.replace(/&#?[a-z0-9]+;/gi, '').replace(/<[^>]*>/g, '').replace(/[^\p{L}\p{N}]+/gu, '');
 };
 
-/**
- * 내보내기용 스타일 및 HTML 소스 생성기 (body 태그 비포함형 격리 컴포넌트)
- */
 function generatePureHtmlHtml(bodyContent) {
     const currentTheme = document.getElementById('theme-select').value;
     const colors = THEME_STYLES[currentTheme] || THEME_STYLES.dark;
@@ -45,12 +39,25 @@ p.message-bubble.dice-bubble { background-color: ${colors.diceBg} !important; co
 }
 
 // ==========================================
-// [3] 비즈니스 로직 및 엔진 (Core Logic)
+// [3] 비즈니스 로직 및 파싱 엔진
 // ==========================================
 
-/**
- * 업로드된 백업본 최초 1회 전체 파싱 및 전역 배열 구조화
- */
+function populateNarrationDropdown() {
+    const selectEl = document.getElementById('narration-select');
+    if (!globScrapedLogs) return;
+
+    const uniqueNames = Array.from(new Set(
+        Object.values(globScrapedLogs).map(log => log.name)
+        .filter(name => name && !["System", "시스템", "알 수 없음", "-"].includes(name))
+    ));
+
+    let dropdownOptions = `<option value="">-- 선택 안함 (지문 없음) --</option>`;
+    uniqueNames.forEach(name => { dropdownOptions += `<option value="${name}">${name}</option>`; });
+    selectEl.innerHTML = dropdownOptions;
+    
+    // 💡 [수정] 나레이션 드롭다운 활성화 조건 변경: 확장 프로그램 연동 시점이 아닌 '실제 파일 업로드 완료 시점'으로 이동하기 위해 여기서는 해제하지 않음
+}
+
 function initialParseRawText() {
     if (!globScrapedLogs || !globLoadedFileText) return;
 
@@ -103,12 +110,12 @@ function initialParseRawText() {
     }
 }
 
-/**
- * 데이터를 기반으로 프리뷰 화면을 렌더링하고 내보내기 소스를 즉시 업데이트
- */
-function renderPreview() {
+function refreshContent() {
     if (!globParsedLogs) return;
+    renderPreview(globParsedLogs);
+}
 
+function renderPreview(logs) {
     let htmlBody = `<div class="log-container">`;
     let currentGroup = null;
 
@@ -137,7 +144,7 @@ function renderPreview() {
         </div>`;
     }
 
-    globParsedLogs.forEach((log) => {
+    logs.forEach((log) => {
         const tagHtml = (log.tabName === '메인') ? '' : `<span class="tab-tag">${log.tabName}</span>`;
 
         if (log.isSystem || log.isNarration || log.name === "-") {
@@ -173,22 +180,18 @@ function renderPreview() {
     const wrapper = document.getElementById('output-wrapper');
     wrapper.innerHTML = htmlBody;
 
-    // 대화 요소 액션 이벤트 바인딩 (수정/삭제)
     bindPreviewActions(wrapper);
 
-    // 내보내기 버튼 상태 및 소스 활성화
-    toggleExportButtons(true);
+    document.getElementById('copy-btn').disabled = false;
+    document.getElementById('download-btn').disabled = false;
 }
 
-/**
- * 프리뷰 내부 수정/삭제 버튼 이벤트 바인딩
- */
 function bindPreviewActions(wrapper) {
     wrapper.querySelectorAll('.delete-btn').forEach(btn => {
         btn.addEventListener('click', (e) => {
             const logId = e.target.closest('.bubble-wrapper').getAttribute('data-log-id');
             globParsedLogs = globParsedLogs.filter(log => log.id !== logId);
-            renderPreview();
+            refreshContent();
         });
     });
 
@@ -201,23 +204,12 @@ function bindPreviewActions(wrapper) {
             if (newText !== null && newText.trim() !== "") {
                 const targetLog = globParsedLogs.find(log => log.id === logId);
                 if (targetLog) targetLog.message = newText.trim();
-                renderPreview();
+                refreshContent();
             }
         });
     });
 }
 
-/**
- * 내보내기 버튼 활성화/비활성화 전환
- */
-function toggleExportButtons(isActive) {
-    document.getElementById('copy-btn').disabled = !isActive;
-    document.getElementById('download-btn').disabled = !isActive;
-}
-
-/**
- * 현재 화면에 렌더링된 컴포넌트를 순수 문자열 소스코드로 변환
- */
 function buildFinalHtmlSource() {
     const logContainer = document.querySelector('#output-wrapper .log-container');
     if (!logContainer) return "";
@@ -229,35 +221,26 @@ function buildFinalHtmlSource() {
 }
 
 // ==========================================
-// [4] 이벤트 리스너 및 초기화 (Events)
+// [4] 이벤트 리스너 및 초기화 (Global Events)
 // ==========================================
 
-// 초기 UI 가이드 메시지 주입
+// 초기 상태: 제어 컨트롤들 명시적 잠금 활성화
+document.getElementById('theme-select').disabled = true;
+document.getElementById('narration-select').disabled = true;
+
 document.getElementById('output-wrapper').innerHTML = `
     <h3 style="text-align: center; margin-top: 100px; color: #aaa;">
         ⏳ 확장 프로그램에서 추출 시작 버튼을 눌러주세요...
     </h3>
 `;
 
-// 크롬 확장 프로그램 데이터 통신 리스너
 window.addEventListener('message', function (event) {
     if (event.data && event.data.type === 'CCFOLIA_RAW_DATA') {
         event.source.postMessage({ type: 'CCFOLIA_DATA_RECEIVED' }, event.origin);
-        
         globScrapedLogs = event.data.payload.collectedLogs;
         globIncludeChatter = event.data.payload.includeChatter;
         
-        // 데이터 수신 즉시 드롭다운 구성 및 활성화
-        const selectEl = document.getElementById('narration-select');
-        const uniqueNames = Array.from(new Set(
-            Object.values(globScrapedLogs).map(log => log.name)
-            .filter(name => name && !["System", "시스템", "알 수 없음", "-"].includes(name))
-        ));
-
-        let dropdownOptions = `<option value="">-- 선택 안함 (지문 없음) --</option>`;
-        uniqueNames.forEach(name => { dropdownOptions += `<option value="${name}">${name}</option>`; });
-        selectEl.innerHTML = dropdownOptions;
-        selectEl.disabled = false;
+        populateNarrationDropdown();
         
         document.getElementById('output-wrapper').innerHTML = `
             <h3 style="text-align: center; margin-top: 100px; color: #4dadff;">
@@ -267,46 +250,44 @@ window.addEventListener('message', function (event) {
     }
 });
 
-// 파일 입력 감지 리스너
 document.getElementById('html-file-picker').addEventListener('change', (e) => {
     const file = e.target.files[0];
     if (!file) return;
 
-    globOriginFileName = file.name; // 안전하게 원본 파일명 보존
+    globOriginFileName = file.name;
 
     const reader = new FileReader();
     reader.onload = function(evt) {
         globLoadedFileText = evt.target.result;
         initialParseRawText(); 
-        renderPreview();
+        
+        // 🌟 [핵심 변경 사항]: 파일이 정상적으로 업로드되면 테마 및 나레이션 선택창 활성화
+        document.getElementById('theme-select').disabled = false;
+        document.getElementById('narration-select').disabled = false;
+        
+        refreshContent();
     };
     reader.readAsText(file, "UTF-8");
 });
 
-// 테마 변경 감지 리스너
 document.getElementById('theme-select').addEventListener('change', (e) => {
-    if (e.target.value === 'light') {
-        document.body.classList.add('light-theme-view');
-    } else {
-        document.body.classList.remove('light-theme-view');
+    if (e.target.value === 'light') document.body.classList.add('light-theme-view');
+    else document.body.classList.remove('light-theme-view');
+    if (globParsedLogs) refreshContent();
+});
+
+document.getElementById('narration-select').addEventListener('change', () => {
+    if (globParsedLogs) {
+        const narrationName = document.getElementById('narration-select').value.trim();
+        globParsedLogs.forEach(log => {
+            if (!log.isSystem && log.name !== "-") {
+                log.isNarration = (narrationName && log.name === narrationName);
+            }
+        });
+        refreshContent();
     }
-    if (globParsedLogs) renderPreview();
 });
 
-// 나레이션 지정 변경 감지 리스너
-document.getElementById('narration-select').addEventListener('change', (e) => {
-    if (!globParsedLogs) return;
-    const narrationName = e.target.value.trim();
-    
-    globParsedLogs.forEach(log => {
-        if (!log.isSystem && log.name !== "-") {
-            log.isNarration = (narrationName && log.name === narrationName);
-        }
-    });
-    renderPreview();
-});
-
-// 다운로드 버튼 단일 리스너 바인딩
 document.getElementById('download-btn').addEventListener('click', () => {
     const fullHtmlSource = buildFinalHtmlSource();
     if (!fullHtmlSource) return;
@@ -314,14 +295,12 @@ document.getElementById('download-btn').addEventListener('click', () => {
     const blob = new Blob([fullHtmlSource], { type: "text/html" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
-    
     a.href = url;
-
-    // 정규식 방식을 사용하되, 가장 끝에 나오는 대괄호 쌍만 제거
+    
     let baseName = "cocofolia_processed_log";
     if (globOriginFileName) {
-        baseName = globOriginFileName.replace(/\.[^/.]+$/, "");       // 1. .html 확장자 제거
-        baseName = baseName.replace(/\[[^\]]+\]$/, '').trim();     // 2. 맨 마지막 [탭이름]만  제거
+        let nameWithoutExt = globOriginFileName.replace(/\.[^/.]+$/, "");
+        baseName = nameWithoutExt.replace(/\[[^\]]+\]$/, '').trim();
     }
     
     a.download = `${baseName || "cocofolia_processed_log"}.html`;
@@ -332,7 +311,6 @@ document.getElementById('download-btn').addEventListener('click', () => {
     URL.revokeObjectURL(url);
 });
 
-// 복사 버튼 단일 리스너 바인딩
 document.getElementById('copy-btn').addEventListener('click', async () => {
     const fullHtmlSource = buildFinalHtmlSource();
     if (!fullHtmlSource) return;
