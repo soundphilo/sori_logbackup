@@ -1,11 +1,24 @@
 // ==========================================
-// [1] 전역 상태 관리 (State)
+// [1] 데이터 상태 관리자 (LogStore)
 // ==========================================
+const LogStore = {
+    _logs: [],
+
+    setLogs(newLogs) {
+        this._logs = newLogs;
+        refreshContent(); // 데이터 변경 시 자동으로 화면 갱신
+    },
+
+    get logs() {
+        return this._logs;
+    }
+};
+
+// 기타 전역 상태
 let globScrapedLogs = null;
 let globIncludeChatter = false;
 let globLoadedFileText = ""; 
 let globOriginFileName = ""; 
-let globParsedLogs = null; 
 
 // ==========================================
 // [2] 유틸리티 및 데이터 가공 함수
@@ -49,15 +62,13 @@ function populateNarrationDropdown() {
     let dropdownOptions = `<option value="">-- 선택 안함 (지문 없음) --</option>`;
     uniqueNames.forEach(name => { dropdownOptions += `<option value="${name}">${name}</option>`; });
     selectEl.innerHTML = dropdownOptions;
-    
-    // 💡 [수정] 나레이션 드롭다운 활성화 조건 변경: 확장 프로그램 연동 시점이 아닌 '실제 파일 업로드 완료 시점'으로 이동하기 위해 여기서는 해제하지 않음
 }
 
 function initialParseRawText() {
     if (!globScrapedLogs || !globLoadedFileText) return;
 
     const scraperArray = JSON.parse(JSON.stringify(Object.values(globScrapedLogs)));
-    globParsedLogs = []; 
+    let tempLogs = [];
     
     const narrationName = document.getElementById('narration-select').value.trim();
     const pTagRegex = /<p[^>]*>([\s\S]*?)<\/p>/gi;
@@ -101,20 +112,22 @@ function initialParseRawText() {
         };
 
         if (matchedLog) matchedLog.used = true;
-        globParsedLogs.push(logPayload);
+        tempLogs.push(logPayload);
     }
+    LogStore.setLogs(tempLogs); // 상태 관리자로 데이터 반영
 }
 
 function refreshContent() {
-    if (!globParsedLogs) return;
-    renderPreview(globParsedLogs);
+    if (LogStore.logs.length > 0) {
+        renderPreview(LogStore.logs);
+    }
 }
 
 function renderPreview(logs) {
     const currentTheme = document.getElementById('theme-select').value || 'dark';
     const colors = THEME_STYLES[currentTheme] || THEME_STYLES.dark;
-    let htmlBody = `
-    <style>
+    
+    let htmlBody = `<style>
         ${COMMON_LOG_STYLE}
         .log-container { background-color: ${colors.containerBg} !important; color: ${colors.textMain} !important; }
         .avatar-box { background-color: ${colors.bubbleBg} !important; }
@@ -123,24 +136,23 @@ function renderPreview(logs) {
         .narration-box { background-color: ${colors.narrationBg} !important; color: ${colors.textNarration} !important; }
     </style>
     <div class="log-container">`;
+    
     let currentGroup = null;
 
     function closeChatGroup(group) {
         let bubblesHtml = group.messages.map((msgObj) => {
             const isDice = msgObj.message.includes('＞');
             const bubbleClass = isDice ? 'message-bubble dice-bubble' : 'message-bubble';
+            return `<div class="bubble-wrapper" data-log-id="${msgObj.id}">
+                <p class="${bubbleClass}">${msgObj.message}</p>
+                <div class="bubble-actions">
+                    <button class="action-mini-btn edit-btn">수정</button>
+                    <button class="action-mini-btn delete-btn">삭제</button>
+                </div>
+            </div>`;
+        }).join('');
         
-        return `
-        <div class="bubble-wrapper" data-log-id="${msgObj.id}">
-            <p class="${bubbleClass}">${msgObj.message}</p>
-            <div class="bubble-actions">
-                <button class="action-mini-btn edit-btn">수정</button>
-                <button class="action-mini-btn delete-btn">삭제</button>
-            </div>
-        </div>`;
-    }).join('');
-        return `
-        <div class="chat-row">
+        return `<div class="chat-row">
             ${group.tagHtml || ''}
             <div class="avatar-box">${group.imgUrl ? `<img src="${group.imgUrl}">` : ''}</div>
             <div class="text-wrap">
@@ -183,147 +195,107 @@ function renderPreview(logs) {
     if (currentGroup) htmlBody += closeChatGroup(currentGroup);
     htmlBody += `</div>`;
 
-    const wrapper = document.getElementById('output-wrapper');
-    wrapper.innerHTML = htmlBody;
-
+    document.getElementById('output-wrapper').innerHTML = htmlBody;
     document.getElementById('copy-btn').disabled = false;
     document.getElementById('download-btn').disabled = false;
 }
 
-
 function buildFinalHtmlSource() {
     const logContainer = document.querySelector('#output-wrapper .log-container');
     if (!logContainer) return "";
-
     const cloneContainer = logContainer.cloneNode(true);
     cloneContainer.querySelectorAll('.bubble-actions').forEach(el => el.remove());
-    
     return generatePureHtmlHtml(cloneContainer.outerHTML);
 }
 
 // ==========================================
-// [4] 이벤트 리스너 및 초기화 (Global Events)
+// [4] 이벤트 리스너 및 초기화
 // ==========================================
 
-// 초기 상태: 제어 컨트롤들 명시적 잠금 활성화
 document.getElementById('theme-select').disabled = true;
 document.getElementById('narration-select').disabled = true;
-
-document.getElementById('output-wrapper').innerHTML = `
-    <h3 style="text-align: center; margin-top: 100px; color: #aaa;">
-        ⏳ 확장 프로그램에서 추출 시작 버튼을 눌러주세요...
-    </h3>
-`;
 
 window.addEventListener('message', function (event) {
     if (event.data && event.data.type === 'CCFOLIA_RAW_DATA') {
         event.source.postMessage({ type: 'CCFOLIA_DATA_RECEIVED' }, event.origin);
         globScrapedLogs = event.data.payload.collectedLogs;
         globIncludeChatter = event.data.payload.includeChatter;
-        
         populateNarrationDropdown();
-        
-        document.getElementById('output-wrapper').innerHTML = `
-            <h3 style="text-align: center; margin-top: 100px; color: #4dadff;">
-                ✅ 데이터 수집 완료! 상단에서 [백업 파일 업로드]를 진행해 주세요.
-            </h3>
-        `;
+        document.getElementById('output-wrapper').innerHTML = `<h3 style="text-align: center; margin-top: 100px; color: #4dadff;">✅ 데이터 수집 완료! 상단에서 [백업 파일 업로드]를 진행해 주세요.</h3>`;
     }
 });
 
 document.getElementById('html-file-picker').addEventListener('change', (e) => {
     const file = e.target.files[0];
     if (!file) return;
-
     globOriginFileName = file.name;
-
     const reader = new FileReader();
     reader.onload = function(evt) {
         globLoadedFileText = evt.target.result;
         initialParseRawText(); 
-        
-        // 파일이 정상적으로 업로드되면 테마 및 나레이션 선택창 활성화
         document.getElementById('theme-select').disabled = false;
         document.getElementById('narration-select').disabled = false;
-        
-        refreshContent();
     };
     reader.readAsText(file, "UTF-8");
+});
+
+document.getElementById('output-wrapper').addEventListener('click', (e) => {
+    if (e.target.classList.contains('delete-btn')) {
+        const logId = e.target.closest('.bubble-wrapper').getAttribute('data-log-id');
+        LogStore.setLogs(LogStore.logs.filter(log => log.id !== logId));
+    }
+    if (e.target.classList.contains('edit-btn')) {
+        const logId = e.target.closest('.bubble-wrapper').getAttribute('data-log-id');
+        const targetTextEl = e.target.closest('.bubble-wrapper').querySelector('.message-bubble, .narration-box');
+        const newText = prompt("✏️ 수정할 내용을 입력하세요:", targetTextEl.innerText);
+        if (newText !== null && newText.trim() !== "") {
+            const updatedLogs = LogStore.logs.map(log => 
+                log.id === logId ? { ...log, message: newText.trim() } : log
+            );
+            LogStore.setLogs(updatedLogs);
+        }
+    }
 });
 
 document.getElementById('theme-select').addEventListener('change', (e) => {
     if (e.target.value === 'light') document.body.classList.add('light-theme-view');
     else document.body.classList.remove('light-theme-view');
-    if (globParsedLogs) refreshContent();
+    refreshContent();
 });
 
 document.getElementById('narration-select').addEventListener('change', () => {
-    if (globParsedLogs) {
-        const narrationName = document.getElementById('narration-select').value.trim();
-        globParsedLogs.forEach(log => {
-            if (!log.isSystem && log.name !== "-") {
-                log.isNarration = (narrationName && log.name === narrationName);
-            }
-        });
-        refreshContent();
-    }
+    const narrationName = document.getElementById('narration-select').value.trim();
+    const updated = LogStore.logs.map(log => {
+        if (!log.isSystem && log.name !== "-") {
+            return { ...log, isNarration: (narrationName && log.name === narrationName) };
+        }
+        return log;
+    });
+    LogStore.setLogs(updated);
 });
 
 document.getElementById('download-btn').addEventListener('click', () => {
     const fullHtmlSource = buildFinalHtmlSource();
     if (!fullHtmlSource) return;
-
     const blob = new Blob([fullHtmlSource], { type: "text/html" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    
     let baseName = "cocofolia_processed_log";
     if (globOriginFileName) {
         let nameWithoutExt = globOriginFileName.replace(/\.[^/.]+$/, "");
         baseName = nameWithoutExt.replace(/\[[^\]]+\]$/, '').trim();
     }
-    
     a.download = `${baseName || "cocofolia_processed_log"}.html`;
-    
-    document.body.appendChild(a); 
-    a.click(); 
-    document.body.removeChild(a);
+    document.body.appendChild(a); a.click(); document.body.removeChild(a);
     URL.revokeObjectURL(url);
 });
 
 document.getElementById('copy-btn').addEventListener('click', async () => {
     const fullHtmlSource = buildFinalHtmlSource();
     if (!fullHtmlSource) return;
-
     try {
         await navigator.clipboard.writeText(fullHtmlSource);
-        alert("✨ 선택하신 테마가 반영된 HTML 전체 소스코드가 클립보드에 복사되었습니다!");
-    } catch (err) { 
-        alert("클립보드 복사에 실패했습니다."); 
-    }
-});
-
-
-// 부모 요소에 이벤트 위임 처리
-document.getElementById('output-wrapper').addEventListener('click', (e) => {
-    // 1. 클릭된 요소가 삭제 버튼인지 확인
-    if (e.target.classList.contains('delete-btn')) {
-        const logId = e.target.closest('.bubble-wrapper').getAttribute('data-log-id');
-        globParsedLogs = globParsedLogs.filter(log => log.id !== logId);
-        refreshContent();
-    }
-    
-    // 2. 클릭된 요소가 수정 버튼인지 확인
-    if (e.target.classList.contains('edit-btn')) {
-        const logId = e.target.closest('.bubble-wrapper').getAttribute('data-log-id');
-        const targetTextEl = e.target.closest('.bubble-wrapper').querySelector('.message-bubble, .narration-box');
-        
-        const newText = prompt("✏️ 수정할 내용을 입력하세요:", targetTextEl.innerText);
-        if (newText !== null && newText.trim() !== "") {
-            const targetLog = globParsedLogs.find(log => log.id === logId);
-            if (targetLog) targetLog.message = newText.trim();
-            refreshContent();
-        }
-    }
+        alert("✨ HTML 전체 소스코드가 클립보드에 복사되었습니다!");
+    } catch (err) { alert("클립보드 복사에 실패했습니다."); }
 });
