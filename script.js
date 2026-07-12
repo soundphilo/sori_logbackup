@@ -29,21 +29,18 @@ const getPureKey = (text) => {
     return text.replace(/&#?[a-z0-9]+;/gi, '').replace(/<[^>]*>/g, '').replace(/[^\p{L}\p{N}]+/gu, '');
 };
 
-function generatePureHtmlHtml(bodyContent) {
-    const currentTheme = document.getElementById('theme-select').value;
-    const colors = THEME_STYLES[currentTheme] || THEME_STYLES.dark;
-    
-    const htmlStyles = `
-<style>
-${COMMON_LOG_STYLE}
-.log-container { background-color: ${colors.containerBg} !important; color: ${colors.textMain} !important; }
-.avatar-box { background-color: ${colors.bubbleBg} !important; }
-p.message-bubble { background-color: ${colors.bubbleBg} !important; color: ${colors.textBubble} !important; }
-p.message-bubble.dice-bubble { background-color: ${colors.diceBg} !important; color: ${colors.textDice} !important; }
-.narration-box { background-color: ${colors.narrationBg} !important; color: ${colors.textNarration} !important; }
-</style>`;
-
-    return `${htmlStyles}${bodyContent}`;
+// 중복 스타일 생성 로직을 하나로 통합
+function getLogStyles(themeName) {
+    const colors = THEME_STYLES[themeName] || THEME_STYLES.dark;
+    return `
+    <style>
+        ${COMMON_LOG_STYLE}
+        .log-container { background-color: ${colors.containerBg} !important; color: ${colors.textMain} !important; }
+        .avatar-box { background-color: ${colors.bubbleBg} !important; }
+        p.message-bubble { background-color: ${colors.bubbleBg} !important; color: ${colors.textBubble} !important; }
+        p.message-bubble.dice-bubble { background-color: ${colors.diceBg} !important; color: ${colors.textDice} !important; }
+        .narration-box { background-color: ${colors.narrationBg} !important; color: ${colors.textNarration} !important; }
+    </style>`;
 }
 
 // ==========================================
@@ -114,7 +111,7 @@ function initialParseRawText() {
         if (matchedLog) matchedLog.used = true;
         tempLogs.push(logPayload);
     }
-    LogStore.setLogs(tempLogs); // 상태 관리자로 데이터 반영
+    LogStore.setLogs(tempLogs);
 }
 
 function refreshContent() {
@@ -125,17 +122,9 @@ function refreshContent() {
 
 function renderPreview(logs) {
     const currentTheme = document.getElementById('theme-select').value || 'dark';
-    const colors = THEME_STYLES[currentTheme] || THEME_STYLES.dark;
+    const styleHtml = getLogStyles(currentTheme);
     
-    let htmlBody = `<style>
-        ${COMMON_LOG_STYLE}
-        .log-container { background-color: ${colors.containerBg} !important; color: ${colors.textMain} !important; }
-        .avatar-box { background-color: ${colors.bubbleBg} !important; }
-        p.message-bubble { background-color: ${colors.bubbleBg} !important; color: ${colors.textBubble} !important; }
-        p.message-bubble.dice-bubble { background-color: ${colors.diceBg} !important; color: ${colors.textDice} !important; }
-        .narration-box { background-color: ${colors.narrationBg} !important; color: ${colors.textNarration} !important; }
-    </style>
-    <div class="log-container">`;
+    let htmlBody = `${styleHtml}<div class="log-container">`;
     
     let currentGroup = null;
 
@@ -205,7 +194,7 @@ function buildFinalHtmlSource() {
     if (!logContainer) return "";
     const cloneContainer = logContainer.cloneNode(true);
     cloneContainer.querySelectorAll('.bubble-actions').forEach(el => el.remove());
-    return generatePureHtmlHtml(cloneContainer.outerHTML);
+    return getLogStyles(document.getElementById('theme-select').value) + cloneContainer.outerHTML;
 }
 
 // ==========================================
