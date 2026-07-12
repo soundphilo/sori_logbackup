@@ -186,35 +186,10 @@ function renderPreview(logs) {
     const wrapper = document.getElementById('output-wrapper');
     wrapper.innerHTML = htmlBody;
 
-    bindPreviewActions(wrapper);
-
     document.getElementById('copy-btn').disabled = false;
     document.getElementById('download-btn').disabled = false;
 }
 
-function bindPreviewActions(wrapper) {
-    wrapper.querySelectorAll('.delete-btn').forEach(btn => {
-        btn.addEventListener('click', (e) => {
-            const logId = e.target.closest('.bubble-wrapper').getAttribute('data-log-id');
-            globParsedLogs = globParsedLogs.filter(log => log.id !== logId);
-            refreshContent();
-        });
-    });
-
-    wrapper.querySelectorAll('.edit-btn').forEach(btn => {
-        btn.addEventListener('click', (e) => {
-            const logId = e.target.closest('.bubble-wrapper').getAttribute('data-log-id');
-            const targetTextEl = e.target.closest('.bubble-wrapper').querySelector('.message-bubble, .narration-box');
-            
-            const newText = prompt("✏️ 수정할 내용을 입력하세요:", targetTextEl.innerText);
-            if (newText !== null && newText.trim() !== "") {
-                const targetLog = globParsedLogs.find(log => log.id === logId);
-                if (targetLog) targetLog.message = newText.trim();
-                refreshContent();
-            }
-        });
-    });
-}
 
 function buildFinalHtmlSource() {
     const logContainer = document.querySelector('#output-wrapper .log-container');
@@ -267,7 +242,7 @@ document.getElementById('html-file-picker').addEventListener('change', (e) => {
         globLoadedFileText = evt.target.result;
         initialParseRawText(); 
         
-        // 🌟 [핵심 변경 사항]: 파일이 정상적으로 업로드되면 테마 및 나레이션 선택창 활성화
+        // 파일이 정상적으로 업로드되면 테마 및 나레이션 선택창 활성화
         document.getElementById('theme-select').disabled = false;
         document.getElementById('narration-select').disabled = false;
         
@@ -326,5 +301,29 @@ document.getElementById('copy-btn').addEventListener('click', async () => {
         alert("✨ 선택하신 테마가 반영된 HTML 전체 소스코드가 클립보드에 복사되었습니다!");
     } catch (err) { 
         alert("클립보드 복사에 실패했습니다."); 
+    }
+});
+
+
+// 부모 요소에 이벤트 위임 처리
+document.getElementById('output-wrapper').addEventListener('click', (e) => {
+    // 1. 클릭된 요소가 삭제 버튼인지 확인
+    if (e.target.classList.contains('delete-btn')) {
+        const logId = e.target.closest('.bubble-wrapper').getAttribute('data-log-id');
+        globParsedLogs = globParsedLogs.filter(log => log.id !== logId);
+        refreshContent();
+    }
+    
+    // 2. 클릭된 요소가 수정 버튼인지 확인
+    if (e.target.classList.contains('edit-btn')) {
+        const logId = e.target.closest('.bubble-wrapper').getAttribute('data-log-id');
+        const targetTextEl = e.target.closest('.bubble-wrapper').querySelector('.message-bubble, .narration-box');
+        
+        const newText = prompt("✏️ 수정할 내용을 입력하세요:", targetTextEl.innerText);
+        if (newText !== null && newText.trim() !== "") {
+            const targetLog = globParsedLogs.find(log => log.id === logId);
+            if (targetLog) targetLog.message = newText.trim();
+            refreshContent();
+        }
     }
 });
