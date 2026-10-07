@@ -29,24 +29,17 @@ const getPureKey = (text) => {
     return text.replace(/&#?[a-z0-9]+;/gi, '').replace(/<[^>]*>/g, '').replace(/[^\p{L}\p{N}]+/gu, '');
 };
 
-// 선택된 나래이션 캐릭터 다중 목록 가져오기 함수
-function getSelectedNarrations() {
-    const selectEl = document.getElementById('narration-select');
-    if (!selectEl) return [];
-    return Array.from(selectEl.selectedOptions).map(option => option.value.trim()).filter(v => v !== "");
-}
-
 // 중복 스타일 생성 로직을 하나로 통합
 function getLogStyles(themeName) {
     const colors = THEME_STYLES[themeName] || THEME_STYLES.dark;
     return `
     <style>
         ${COMMON_LOG_STYLE}
-        .log-container { background-color: ${colors.containerBg} !important; color:${colors.textMain} !important; }
+        .log-container { background-color: ${colors.containerBg} !important; color: ${colors.textMain} !important; }
         .avatar-box { background-color: ${colors.bubbleBg} !important; }
-        p.message-bubble { background-color: ${colors.bubbleBg} !important; color:${colors.textBubble} !important; }
-        p.message-bubble.dice-bubble { background-color: ${colors.diceBg} !important; color:${colors.textDice} !important; }
-        .narration-box { background-color: ${colors.narrationBg} !important; color:${colors.textNarration} !important; }
+        p.message-bubble { background-color: ${colors.bubbleBg} !important; color: ${colors.textBubble} !important; }
+        p.message-bubble.dice-bubble { background-color: ${colors.diceBg} !important; color: ${colors.textDice} !important; }
+        .narration-box { background-color: ${colors.narrationBg} !important; color: ${colors.textNarration} !important; }
     </style>`;
 }
 
@@ -58,16 +51,12 @@ function populateNarrationDropdown() {
     const selectEl = document.getElementById('narration-select');
     if (!globScrapedLogs) return;
 
-    // 다중 선택(multiple) 속성 설정
-    selectEl.setAttribute('multiple', 'true');
-    selectEl.setAttribute('size', '5'); // 드롭다운에 표시할 행 수
-
     const uniqueNames = Array.from(new Set(
         Object.values(globScrapedLogs).map(log => log.name)
         .filter(name => name && !["System", "시스템", "알 수 없음", "-"].includes(name))
     ));
 
-    let dropdownOptions = ``;
+    let dropdownOptions = `<option value="">-- 선택 안함 (지문 없음) --</option>`;
     uniqueNames.forEach(name => { dropdownOptions += `<option value="${name}">${name}</option>`; });
     selectEl.innerHTML = dropdownOptions;
 }
@@ -78,8 +67,7 @@ function initialParseRawText() {
     const scraperArray = JSON.parse(JSON.stringify(Object.values(globScrapedLogs)));
     let tempLogs = [];
     
-    // 선택된 다중 나래이션 캐릭터 목록 가져오기
-    const narrationNames = getSelectedNarrations();
+    const narrationName = document.getElementById('narration-select').value.trim();
     const pTagRegex = /<p[^>]*>([\s\S]*?)<\/p>/gi;
     const spanRegex = /<span>\s*\[([^\]]+)\]\s*<\/span>\s*<span>\s*([\s\S]*?)\s*<\/span>\s*:\s*<span>\s*([\s\S]*?)\s*<\/span>/i;
 
@@ -106,8 +94,7 @@ function initialParseRawText() {
         if (!matchedLog) matchedLog = scraperArray.find(log => !log.used && log.name === fileName && getPureKey(log.matchKey) === fileMatchKey);
         if (!matchedLog) matchedLog = scraperArray.find(log => !log.used && getPureKey(log.matchKey) === fileMatchKey);
 
-        // 선택된 나래이션 캐릭터 배열에 포함되어 있는지 체크
-        const isNarration = narrationNames.includes(fileName);
+        const isNarration = (narrationName && fileName === narrationName);
         const isSystem = ["System", "시스템", "system"].includes(fileName);
 
         const logPayload = {
@@ -265,12 +252,11 @@ document.getElementById('theme-select').addEventListener('change', (e) => {
     refreshContent();
 });
 
-// 다중 선택 시 드롭다운 변경 이벤트
 document.getElementById('narration-select').addEventListener('change', () => {
-    const narrationNames = getSelectedNarrations();
+    const narrationName = document.getElementById('narration-select').value.trim();
     const updated = LogStore.logs.map(log => {
         if (!log.isSystem && log.name !== "-") {
-            return { ...log, isNarration: narrationNames.includes(log.name) };
+            return { ...log, isNarration: (narrationName && log.name === narrationName) };
         }
         return log;
     });
@@ -286,4 +272,19 @@ document.getElementById('download-btn').addEventListener('click', () => {
     a.href = url;
     let baseName = "cocofolia_processed_log";
     if (globOriginFileName) {
-        let nameWithoutExt = globOriginFileName.
+        let nameWithoutExt = globOriginFileName.replace(/\.[^/.]+$/, "");
+        baseName = nameWithoutExt.replace(/\[[^\]]+\]$/, '').trim();
+    }
+    a.download = `${baseName || "cocofolia_processed_log"}.html`;
+    document.body.appendChild(a); a.click(); document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+});
+
+document.getElementById('copy-btn').addEventListener('click', async () => {
+    const fullHtmlSource = buildFinalHtmlSource();
+    if (!fullHtmlSource) return;
+    try {
+        await navigator.clipboard.writeText(fullHtmlSource);
+        alert("✨ HTML 전체 소스코드가 클립보드에 복사되었습니다!");
+    } catch (err) { alert("클립보드 복사에 실패했습니다."); }
+});
