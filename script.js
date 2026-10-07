@@ -29,6 +29,15 @@ const getPureKey = (text) => {
     return text.replace(/&#?[a-z0-9]+;/gi, '').replace(/<[^>]*>/g, '').replace(/[^\p{L}\p{N}]+/gu, '');
 };
 
+// 선택된 나래이션 캐릭터 목록(배열)을 가져오는 함수
+function getSelectedNarrations() {
+    const selectEl = document.getElementById('narration-select');
+    if (!selectEl) return [];
+    return Array.from(selectEl.selectedOptions)
+                .map(option => option.value.trim())
+                .filter(v => v !== "");
+}
+
 // 중복 스타일 생성 로직을 하나로 통합
 function getLogStyles(themeName) {
     const colors = THEME_STYLES[themeName] || THEME_STYLES.dark;
@@ -51,12 +60,17 @@ function populateNarrationDropdown() {
     const selectEl = document.getElementById('narration-select');
     if (!globScrapedLogs) return;
 
+    // 1. 드롭다운을 다중 선택(multiple) 가능하도록 속성 추가 및 화면에 5줄 표시
+    selectEl.setAttribute('multiple', 'true');
+    selectEl.setAttribute('size', '5');
+
     const uniqueNames = Array.from(new Set(
         Object.values(globScrapedLogs).map(log => log.name)
         .filter(name => name && !["System", "시스템", "알 수 없음", "-"].includes(name))
     ));
 
-    let dropdownOptions = `<option value="">-- 선택 안함 (지문 없음) --</option>`;
+    // 2. 단일 선택용 '-- 선택 안함 --' 옵션을 없애고 캐릭터 이름만 옵션으로 추가
+    let dropdownOptions = ``;
     uniqueNames.forEach(name => { dropdownOptions += `<option value="${name}">${name}</option>`; });
     selectEl.innerHTML = dropdownOptions;
 }
@@ -67,7 +81,8 @@ function initialParseRawText() {
     const scraperArray = JSON.parse(JSON.stringify(Object.values(globScrapedLogs)));
     let tempLogs = [];
     
-    const narrationName = document.getElementById('narration-select').value.trim();
+    // 1단계에서 만든 함수를 호출하여 선택된 나래이션 이름 배열을 받아옴
+    const narrationNames = getSelectedNarrations();
     const pTagRegex = /<p[^>]*>([\s\S]*?)<\/p>/gi;
     const spanRegex = /<span>\s*\[([^\]]+)\]\s*<\/span>\s*<span>\s*([\s\S]*?)\s*<\/span>\s*:\s*<span>\s*([\s\S]*?)\s*<\/span>/i;
 
@@ -94,7 +109,8 @@ function initialParseRawText() {
         if (!matchedLog) matchedLog = scraperArray.find(log => !log.used && log.name === fileName && getPureKey(log.matchKey) === fileMatchKey);
         if (!matchedLog) matchedLog = scraperArray.find(log => !log.used && getPureKey(log.matchKey) === fileMatchKey);
 
-        const isNarration = (narrationName && fileName === narrationName);
+        // 읽어온 파일의 캐릭터 이름(fileName)이 선택된 나래이션 배열에 포함되어 있는지 확인
+        const isNarration = narrationNames.includes(fileName);
         const isSystem = ["System", "시스템", "system"].includes(fileName);
 
         const logPayload = {
@@ -252,11 +268,15 @@ document.getElementById('theme-select').addEventListener('change', (e) => {
     refreshContent();
 });
 
+// [수정된 4단계 코드]
 document.getElementById('narration-select').addEventListener('change', () => {
-    const narrationName = document.getElementById('narration-select').value.trim();
+    // 1단계에서 만든 함수를 호출해 현재 선택되어 있는 모든 나래이션 캐릭터 목록을 가져옴
+    const narrationNames = getSelectedNarrations();
+    
     const updated = LogStore.logs.map(log => {
         if (!log.isSystem && log.name !== "-") {
-            return { ...log, isNarration: (narrationName && log.name === narrationName) };
+            // 해당 로그의 캐릭터 이름이 선택된 목록에 들어있는지 확인하여 isNarration 값 업데이트
+            return { ...log, isNarration: narrationNames.includes(log.name) };
         }
         return log;
     });
