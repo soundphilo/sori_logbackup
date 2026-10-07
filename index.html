@@ -301,9 +301,15 @@
             </div>
             <div class="control-item">
                 <strong>2. 나레이션 캐릭터 지정</strong>
-                <select id="narration-select" disabled>
-                    <option value="">-- 파일 먼저 업로드 --</option>
-                </select>
+                <div class="custom-dropdown" id="narration-dropdown">
+                    <button type="button" class="dropdown-button" id="dropdown-btn" disabled>
+                        <span>-- 파일 먼저 업로드 --</span>
+                        <span class="arrow">▼</span>
+                    </button>
+                    <div class="dropdown-menu" id="dropdown-menu">
+                        <!-- JS에서 체크박스 목록이 생성됩니다 -->
+                    </div>
+                </div>
             </div>
             <div class="control-item">
                 <strong>3. 테마 선택</strong>
