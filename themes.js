@@ -9,6 +9,11 @@ const COMMON_LOG_STYLE = `
 p.message-bubble { border-radius: 8px; padding: 8px 14px !important; font-size: 14px; line-height: 1.6; white-space: pre-wrap; word-break: break-all; margin: 0; width: fit-content; max-width: 100%; box-sizing: border-box; }
 .narration-box { border-radius: 8px; padding: 10px 14px !important; font-size: 14px; line-height: 1.6; white-space: pre-wrap; word-break: break-all; text-align: center; width: 100%; box-sizing: border-box; margin: 2px 0; }
 .tab-tag { position: absolute; top: 2px; right: 2px; display: inline-block; padding: 2px 6px; font-size: 10px; border-radius: 4px; background-color: #333 !important; color: #aaa !important; }
+/* [v4.5] 화면 가로가 좁을 때(600px 이하)만: 캐릭터 말풍선을 나레이션 칸처럼 오른쪽 끝까지 꽉 채움 */
+@media (max-width: 600px) {
+  .text-wrap { padding-right: 0; }
+  p.message-bubble { width: 100%; }
+}
 `;
 
 const THEME_STYLES = {
