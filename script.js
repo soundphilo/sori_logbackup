@@ -4,9 +4,9 @@
 const LogStore = {
     _logs: [],
 
-    setLogs(newLogs) {
+    setLogs(newLogs, options) {
         this._logs = newLogs;
-        refreshContent(); // 데이터 변경 시 자동으로 화면 갱신
+        refreshContent(options); // 데이터 변경 시 자동으로 화면 갱신
     },
 
     get logs() {
@@ -21,6 +21,8 @@ let globParsedEntries = null;       // [v4.4] 불러온 파일에서 뽑아낸 �
 let globOriginFileName = "";
 let globNarrationNames = new Set(); // 선택된 나레이션 캐릭터들 (여러 명 가능)
 let globImageTarget = null;         // 이미지를 바꿀 대상 {scope:'block', ids:[...]} 또는 {scope:'char', name}
+let globAppliedNarrationKey = "";   // [v4.6] 화면에 이미 반영된 나레이션 선택 (드롭다운을 닫을 때 비교용)
+let globBlockNodes = null;          // [v4.6] 지금 화면에 있는 대사 칸들 {sig, el} (바뀐 칸만 새로 만들기 위해)
 
 // 나레이션/이미지 목록에서 제외할 이름들
 const EXCLUDED_NAMES = ["System", "system", "시스템", "알 수 없음", "-"];
@@ -209,14 +211,51 @@ function computeImgStyle(setting, natW, natH) {
 }
 
 // 이미지 칸 하나에 크기/확대/위치를 입힘 (인라인 스타일이라 복사·다운로드 결과물에도 그대로 남음)
+// [v4.7] 이미지 원본 크기 기억 (주소별). 이미지가 늦게 불러와져도 확대 위치가 어긋나지 않게 하기 위함
+const globImgSize = new Map();
+
+function rememberImgSize(src, w, h) {
+    if (src && w && h) globImgSize.set(src, { w, h });
+}
+
+// 파일을 읽자마자 이미지 크기를 미리 알아 둠
+function preloadImageSizes(urls) {
+    new Set(urls.map(displayImgUrl).filter(Boolean)).forEach(src => {
+        if (globImgSize.has(src)) return;
+        const probe = new Image();
+        probe.onload = () => {
+            rememberImgSize(src, probe.naturalWidth, probe.naturalHeight);
+            restyleImagesWithSrc(src);
+        };
+        probe.src = src;
+    });
+}
+
+// 같은 이미지를 쓰는 칸들의 확대 위치를 다시 계산
+function restyleImagesWithSrc(src) {
+    document.querySelectorAll('.avatar-box[data-char-idx] img').forEach(img => {
+        if (img.getAttribute('src') !== src) return;
+        const box = img.closest('.avatar-box');
+        styleAvatarBox(box, getCharSetting(globCharNames[box.dataset.charIdx]));
+    });
+}
+
 function styleAvatarBox(box, setting) {
     box.style.width = `${setting.size}px`;
     box.style.height = `${setting.size}px`;
     const img = box.querySelector('img');
     if (!img) return;
-    const apply = () => img.setAttribute('style', computeImgStyle(setting, img.naturalWidth, img.naturalHeight));
-    apply();
-    if (!(img.complete && img.naturalWidth)) img.onload = apply;
+    const src = img.getAttribute('src');
+    if (img.complete && img.naturalWidth) rememberImgSize(src, img.naturalWidth, img.naturalHeight);
+    const size = globImgSize.get(src);
+    img.setAttribute('style', computeImgStyle(setting, size && size.w, size && size.h));
+    if (!size) {
+        // 아직 크기를 모르면, 불러온 뒤에 다시 계산
+        img.addEventListener('load', () => {
+            rememberImgSize(src, img.naturalWidth, img.naturalHeight);
+            img.setAttribute('style', computeImgStyle(getCharSetting(globCharNames[box.dataset.charIdx]) || setting, img.naturalWidth, img.naturalHeight));
+        }, { once: true });
+    }
 }
 
 // 영역 안의 모든 이미지 칸에 설정 적용
@@ -422,7 +461,7 @@ function populateNarrationDropdown() {
             <label class="dropdown-item">
                 <input type="checkbox" value="${escapeHtml(name)}" ${globNarrationNames.has(name) ? 'checked' : ''}>
                 <span>${escapeHtml(name)}</span>
-            </label>`).join('');
+            </label>`).join('') + `<div class="dropdown-hint">다 고른 뒤 바깥을 누르면 적용돼요</div>`;
     }
 
     btn.disabled = false;
@@ -442,11 +481,29 @@ function applyNarrationToLogs() {
     const narrationNames = getSelectedNarrations();
     const updated = LogStore.logs.map(log => {
         if (!log.isSystem && log.name !== "-") {
-            return { ...log, isNarration: narrationNames.includes(log.name) };
+            const isNarration = narrationNames.includes(log.name);
+            return log.isNarration === isNarration ? log : { ...log, isNarration };
         }
         return log;
     });
-    LogStore.setLogs(updated);
+    LogStore.setLogs(updated, { incremental: true }); // [v4.6] 바뀐 캐릭터의 대사 칸만 새로 그림
+}
+
+// [v4.6] 지금 고른 나레이션 목록을 비교용 글자로
+function narrationKey() {
+    return getSelectedNarrations().slice().sort().join('\u0001');
+}
+
+// [v4.6] 드롭다운을 닫고, 선택이 바뀌었으면 그때 한 번에 반영
+function closeNarrationDropdown() {
+    const dropdown = document.getElementById('narration-dropdown');
+    if (!dropdown || !dropdown.classList.contains('open')) return;
+    dropdown.classList.remove('open');
+    const key = narrationKey();
+    if (key !== globAppliedNarrationKey) {
+        globAppliedNarrationKey = key;
+        applyNarrationToLogs();
+    }
 }
 
 // ==========================================
@@ -669,8 +726,10 @@ function buildLogsFromEntries() {
         });
     });
 
+    preloadImageSizes(tempLogs.map(log => getEffectiveImg(log)));
     LogStore.setLogs(tempLogs);
     populateNarrationDropdown();
+    globAppliedNarrationKey = narrationKey();
     if (isImagePanelOpen()) renderImagePanel();
     return tempLogs.length;
 }
@@ -679,60 +738,62 @@ function buildLogsFromEntries() {
 // [8] 화면 그리기
 // ==========================================
 
-function refreshContent() {
+function refreshContent(options) {
     if (LogStore.logs.length > 0) {
-        renderPreview(LogStore.logs);
+        renderPreview(LogStore.logs, options);
     } else if (globParsedEntries) {
+        globBlockNodes = null;
         showStatus("⚠️ 표시할 로그가 없습니다. 코코포리아에서 내보낸 로그 파일(.html / .json / .zip)이 맞는지 확인해 주세요.");
     }
 }
 
-function renderPreview(logs) {
-    const currentTheme = document.getElementById('theme-select').value || 'dark';
-    const styleHtml = getLogStyles(currentTheme);
-
-    // 이미지가 하나도 없을 때만 안내 (다운로드 결과물에는 포함되지 않음)
+// 이미지가 하나도 없을 때 보여줄 안내 (다운로드 결과물에는 포함되지 않음)
+function getNoticeHtml(logs) {
     const hasAnyImage = logs.some(log => !log.isNarration && !log.isSystem && getEffectiveImg(log));
-    const noticeHtml = hasAnyImage ? '' :
+    return hasAnyImage ? '' :
         `<div class="notice-banner">ℹ️ 이 파일에는 캐릭터 이미지가 들어 있지 않아요. 코코포리아에서 <strong>JSON</strong>이나 <strong>ZIP</strong> 형식으로 내보낸 파일을 쓰거나, 데이터 수집을 먼저 하거나, 🖼 이미지 설정에서 직접 넣을 수 있어요.</div>`;
+}
 
-    let htmlBody = `${styleHtml}${noticeHtml}<div class="log-container">`;
-
-    let currentGroup = null;
-
-    function closeChatGroup(group) {
-        const bubblesHtml = group.messages.map((msgObj) => {
-            const isDice = msgObj.message.includes('＞');
-            const bubbleClass = isDice ? 'message-bubble dice-bubble' : 'message-bubble';
-            return `<div class="bubble-wrapper" data-log-id="${msgObj.id}">
-                <p class="${bubbleClass}">${msgObj.message}</p>
-                <div class="bubble-actions">
-                    <button class="action-mini-btn edit-btn">수정</button>
-                    <button class="action-mini-btn delete-btn">삭제</button>
-                </div>
-            </div>`;
-        }).join('');
-
-        const ids = group.messages.map(m => m.id).join(',');
-        const shownImg = displayImgUrl(group.imgUrl);
-        return `<div class="chat-row">
-            ${group.tagHtml || ''}
-            <div class="avatar-box" data-char-idx="${charIdx(group.name)}" data-log-ids="${ids}">${shownImg ? `<img src="${escapeHtml(shownImg)}" alt="">` : ''}<button type="button" class="avatar-change-btn" title="이 이미지 바꾸기">🖼</button></div>
-            <div class="text-wrap">
-                <span class="char-name" style="color:${group.color}">${group.name}</span>
-                <div class="bubbles-container">${bubblesHtml}</div>
-            </div>
-        </div>`;
-    }
-
-    logs.forEach((log) => {
+// 로그를 화면의 칸(나레이션 한 줄 / 같은 캐릭터의 연속 대사 묶음) 단위로 나눔
+function buildBlocks(logs) {
+    const blocks = [];
+    let current = null;
+    logs.forEach(log => {
         const tagHtml = (log.tabName === '메인') ? '' : `<span class="tab-tag">${log.tabName}</span>`;
-
         if (log.isSystem || log.isNarration || log.name === "-") {
-            if (currentGroup) { htmlBody += closeChatGroup(currentGroup); currentGroup = null; }
-            htmlBody += `
-            <div class="chat-row">
-                ${tagHtml}
+            current = null;
+            blocks.push({ type: 'narr', log, tagHtml });
+            return;
+        }
+        const imgUrl = getEffectiveImg(log);
+        if (current && current.imgUrl === imgUrl && current.tabName === log.tabName && current.name === log.name) {
+            current.messages.push({ id: log.id, message: log.message });
+        } else {
+            current = {
+                type: 'chat', imgUrl, tabName: log.tabName, name: log.name, color: log.color, tagHtml,
+                messages: [{ id: log.id, message: log.message }]
+            };
+            blocks.push(current);
+        }
+    });
+    return blocks;
+}
+
+// 칸의 "지문" — 내용이 같으면 같은 글자가 나와서, 이미 그려진 칸을 그대로 다시 쓸 수 있음
+function blockSignature(block) {
+    if (block.type === 'narr') {
+        return `n\u0001${block.log.id}\u0001${block.log.tabName}\u0001${block.log.message}`;
+    }
+    return `c\u0001${block.name}\u0001${displayImgUrl(block.imgUrl)}\u0001${block.tabName}\u0001${block.color}\u0001`
+        + block.messages.map(m => `${m.id}\u0002${m.message}`).join('\u0001');
+}
+
+// 칸 하나의 HTML
+function blockHtml(block) {
+    if (block.type === 'narr') {
+        const log = block.log;
+        return `<div class="chat-row">
+                ${block.tagHtml}
                 <div class="bubble-wrapper" data-log-id="${log.id}" style="width:100%;">
                     <div class="narration-box">${log.message}</div>
                     <div class="bubble-actions" style="position:absolute; right:10px; top:5px;">
@@ -741,26 +802,76 @@ function renderPreview(logs) {
                     </div>
                 </div>
             </div>`;
-            return;
-        }
+    }
 
-        const imgUrl = getEffectiveImg(log);
-        if (currentGroup && currentGroup.imgUrl === imgUrl && currentGroup.tabName === log.tabName && currentGroup.name === log.name) {
-            currentGroup.messages.push({ id: log.id, message: log.message });
-        } else {
-            if (currentGroup) htmlBody += closeChatGroup(currentGroup);
-            currentGroup = {
-                imgUrl: imgUrl, tabName: log.tabName, name: log.name, color: log.color, tagHtml: tagHtml,
-                messages: [{ id: log.id, message: log.message }]
-            };
-        }
-    });
+    const bubblesHtml = block.messages.map((msgObj) => {
+        const isDice = msgObj.message.includes('＞');
+        const bubbleClass = isDice ? 'message-bubble dice-bubble' : 'message-bubble';
+        return `<div class="bubble-wrapper" data-log-id="${msgObj.id}">
+                <p class="${bubbleClass}">${msgObj.message}</p>
+                <div class="bubble-actions">
+                    <button class="action-mini-btn edit-btn">수정</button>
+                    <button class="action-mini-btn delete-btn">삭제</button>
+                </div>
+            </div>`;
+    }).join('');
 
-    if (currentGroup) htmlBody += closeChatGroup(currentGroup);
-    htmlBody += `</div>`;
+    const ids = block.messages.map(m => m.id).join(',');
+    const shownImg = displayImgUrl(block.imgUrl);
+    return `<div class="chat-row">
+            ${block.tagHtml}
+            <div class="avatar-box" data-char-idx="${charIdx(block.name)}" data-log-ids="${ids}">${shownImg ? `<img src="${escapeHtml(shownImg)}" alt="">` : ''}<button type="button" class="avatar-change-btn" title="이 이미지 바꾸기">🖼</button></div>
+            <div class="text-wrap">
+                <span class="char-name" style="color:${block.color}">${block.name}</span>
+                <div class="bubbles-container">${bubblesHtml}</div>
+            </div>
+        </div>`;
+}
 
+// options.incremental 이 true면: 바뀐 칸만 새로 만들고, 그대로인 칸(이미지 포함)은 다시 쓰기
+function renderPreview(logs, options = {}) {
     const wrapper = document.getElementById('output-wrapper');
-    wrapper.innerHTML = htmlBody;
+    const blocks = buildBlocks(logs);
+    const signatures = blocks.map(blockSignature);
+    const container = wrapper.querySelector('.log-container');
+
+    if (options.incremental && container && globBlockNodes) {
+        const pool = new Map();
+        globBlockNodes.forEach(({ sig, el }) => {
+            if (!pool.has(sig)) pool.set(sig, []);
+            pool.get(sig).push(el);
+        });
+
+        const fragment = document.createDocumentFragment();
+        const created = [];
+        const nextNodes = blocks.map((block, i) => {
+            const sig = signatures[i];
+            let el = pool.has(sig) ? pool.get(sig).shift() : null;
+            if (!el) {
+                const tpl = document.createElement('template');
+                tpl.innerHTML = blockHtml(block).trim();
+                el = tpl.content.firstElementChild;
+                created.push(el);
+            }
+            fragment.appendChild(el);
+            return { sig, el };
+        });
+        container.replaceChildren(fragment);
+        created.forEach(el => styleAvatarsIn(el));
+        globBlockNodes = nextNodes;
+
+        // 안내 문구가 필요해졌거나 필요 없어졌으면 맞춰 줌
+        const oldNotice = wrapper.querySelector('.notice-banner');
+        const noticeHtml = getNoticeHtml(logs);
+        if (oldNotice && !noticeHtml) oldNotice.remove();
+        if (!oldNotice && noticeHtml) container.insertAdjacentHTML('beforebegin', noticeHtml);
+        return;
+    }
+
+    const currentTheme = document.getElementById('theme-select').value || 'dark';
+    wrapper.innerHTML = `${getLogStyles(currentTheme)}${getNoticeHtml(logs)}<div class="log-container">${blocks.map(blockHtml).join('')}</div>`;
+    const newContainer = wrapper.querySelector('.log-container');
+    globBlockNodes = Array.from(newContainer.children).map((el, i) => ({ sig: signatures[i], el }));
     styleAvatarsIn(wrapper);
     document.getElementById('copy-btn').disabled = false;
     document.getElementById('download-btn').disabled = false;
@@ -769,6 +880,7 @@ function renderPreview(logs) {
 function buildFinalHtmlSource() {
     const logContainer = document.querySelector('#output-wrapper .log-container');
     if (!logContainer) return "";
+    styleAvatarsIn(logContainer); // [v4.7] 복사·다운로드 직전에 이미지 확대 위치를 최신 값으로 다시 계산
     const cloneContainer = logContainer.cloneNode(true);
     // 편집용 버튼은 결과물에서 제거
     cloneContainer.querySelectorAll('.bubble-actions, .avatar-change-btn').forEach(el => el.remove());
@@ -905,22 +1017,33 @@ document.getElementById('image-file-picker').addEventListener('change', async (e
     }
 });
 
+// [v4.7] 테마를 바꿀 때 로그 전체를 다시 그리지 않고, 색깔 설정(style)만 바꿔 끼움
 document.getElementById('theme-select').addEventListener('change', (e) => {
     if (e.target.value === 'light') document.body.classList.add('light-theme-view');
     else document.body.classList.remove('light-theme-view');
-    refreshContent();
+
+    const oldStyle = document.querySelector('#output-wrapper > style');
+    if (oldStyle && document.querySelector('#output-wrapper .log-container')) {
+        const tpl = document.createElement('template');
+        tpl.innerHTML = getLogStyles(e.target.value).trim();
+        oldStyle.replaceWith(tpl.content.firstElementChild);
+    } else {
+        refreshContent();
+    }
 });
 
 // 나레이션 드롭다운 열기/닫기
 document.getElementById('dropdown-btn').addEventListener('click', (e) => {
     e.stopPropagation();
-    document.getElementById('narration-dropdown').classList.toggle('open');
+    const dropdown = document.getElementById('narration-dropdown');
+    if (dropdown.classList.contains('open')) closeNarrationDropdown(); // 다시 누르면 닫으면서 반영
+    else dropdown.classList.add('open');
 });
 
 // 바깥을 클릭하면 드롭다운 / 🖼 메뉴 닫기
 document.addEventListener('click', (e) => {
     const dropdown = document.getElementById('narration-dropdown');
-    if (dropdown && !dropdown.contains(e.target)) dropdown.classList.remove('open');
+    if (dropdown && !dropdown.contains(e.target)) closeNarrationDropdown(); // [v4.6] 바깥을 누르면 닫으면서 한 번에 반영
     const menu = document.getElementById('avatar-menu');
     if (menu && !menu.contains(e.target)) closeAvatarMenu();
 });
@@ -929,17 +1052,16 @@ document.addEventListener('click', (e) => {
 document.addEventListener('keydown', (e) => {
     if (e.key !== 'Escape') return;
     closeAvatarMenu();
-    document.getElementById('narration-dropdown').classList.remove('open');
+    closeNarrationDropdown();
     document.getElementById('image-panel').classList.remove('open');
 });
 
-// 체크박스를 켜고 끌 때마다 나레이션 반영 (여러 명 선택 가능)
+// [v4.6] 체크박스는 고르기만 하고, 화면 반영은 드롭다운을 닫을 때 한 번에
 document.getElementById('dropdown-menu').addEventListener('change', (e) => {
     if (e.target.type !== 'checkbox') return;
     if (e.target.checked) globNarrationNames.add(e.target.value);
     else globNarrationNames.delete(e.target.value);
     updateDropdownLabel();
-    applyNarrationToLogs();
 });
 
 // 이미지 설정 패널 열기/닫기
