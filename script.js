@@ -1030,15 +1030,31 @@ document.getElementById('image-panel-list').addEventListener('pointermove', (e) 
 document.getElementById('download-btn').addEventListener('click', () => {
     const fullHtmlSource = buildFinalHtmlSource();
     if (!fullHtmlSource) return;
-    const blob = new Blob([fullHtmlSource], { type: "text/html" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
     let baseName = "cocofolia_processed_log";
     if (globOriginFileName) {
         const nameWithoutExt = globOriginFileName.replace(/\.[^/.]+$/, "");
         baseName = nameWithoutExt.replace(/\[[^\]]+\]$/, '').replace(/_?html_log$/i, '').trim();
     }
+
+    // [v4.5] 다운로드 파일에만: 휴대폰에서 바로 열어도 휴대폰 화면 크기에 맞게 보이도록 설정 추가
+    // (복사 버튼으로 블로그에 붙여넣는 코드는 그대로)
+    const bodyBg = (THEME_STYLES[document.getElementById('theme-select').value] || THEME_STYLES.dark).bodyBg;
+    const fileHtml = `<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>${escapeHtml(baseName || "로그")}</title>
+</head>
+<body style="margin:0; padding:0 12px; background-color:${bodyBg};">
+${fullHtmlSource}
+</body>
+</html>`;
+
+    const blob = new Blob([fileHtml], { type: "text/html" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
     a.download = `${baseName || "cocofolia_processed_log"}.html`;
     document.body.appendChild(a); a.click(); document.body.removeChild(a);
     URL.revokeObjectURL(url);
