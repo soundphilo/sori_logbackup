@@ -6,11 +6,12 @@ const COMMON_LOG_STYLE = `
 .text-wrap { display: flex; flex-direction: column; flex-grow: 1; padding-right: clamp(0px, calc((100% - 560px) * 999), 60px); min-width: 0; } 
 .char-name { font-weight: bold; font-size: 14px; margin-bottom: 6px; display: block; }
 .bubbles-container { display: flex; flex-direction: column; gap: 4px; width: 100%; }
-p.message-bubble { border-radius: 8px; padding: 8px 14px !important; font-size: 14px; line-height: 1.6; white-space: pre-wrap; word-break: break-all; margin: 0; width: fit-content; min-width: clamp(0px, calc((420px - 100%) * 999), 100%); max-width: 100%; box-sizing: border-box; }
+p.message-bubble { border-radius: 8px; padding: 8px 14px !important; font-size: 14px; line-height: 1.6; white-space: pre-wrap; word-break: break-all; margin: 0; width: fit-content; max-width: 100%; box-sizing: border-box; }
 .narration-box { border-radius: 8px; padding: 10px 14px !important; font-size: 14px; line-height: 1.6; white-space: pre-wrap; word-break: break-all; text-align: center; width: 100%; box-sizing: border-box; margin: 2px 0; }
 .tab-tag { position: absolute; top: 2px; right: 2px; display: inline-block; padding: 2px 6px; font-size: 10px; border-radius: 4px; background-color: #333 !important; color: #aaa !important; }
-/* [v4.8] 로그 칸이 좁을 때(휴대폰 등)만 말풍선이 오른쪽 끝까지 채워짐.
-   위의 .text-wrap padding-right 와 p.message-bubble min-width 의 clamp(...) 가 그 역할을 함.
+/* [v4.9] 로그 칸이 좁을 때(휴대폰 등)만 말풍선이 늘어날 수 있는 최대 길이를 나레이션 칸 오른쪽 끝까지 넓힘.
+   짧은 대사는 글 길이만큼만, 긴 대사만 나레이션 칸 오른쪽 끝에서 줄바꿈됨.
+   위의 .text-wrap padding-right 의 clamp(...) 가 그 역할을 함.
    @media 같은 조건문을 쓰지 않아서, 블로그가 조건문을 지워도 작동함 */
 `;
 
