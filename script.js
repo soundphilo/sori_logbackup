@@ -30,10 +30,10 @@ const SYSTEM_NAMES = ["System", "system", "시스템"];
 
 // ==========================================
 // 캐릭터별 이미지 설정 (이름마다 한 번 정하면 저장됨)
-//   size: 이미지 칸 크기(px), zoom: 확대 배율, fx/fy: 확대할 위치(0~1), img: 바꾼 이미지
+//   zoom: 확대 배율, fx/fy: 확대할 위치(0~1), img: 바꾼 이미지
 // ==========================================
 const CHAR_SETTINGS_KEY = 'sori-ccfolia-char-settings';
-const DEFAULT_CHAR_SETTING = { size: 64, zoom: 1, fx: 0.5, fy: 0.5, img: "" };
+const DEFAULT_CHAR_SETTING = { zoom: 1, fx: 0.5, fy: 0.5, img: "" };
 let globCharSettings = loadCharSettings();
 let globSaveTimer = null;
 
@@ -197,17 +197,37 @@ function showStatus(message) {
 
 // 확대할 때 기준점(transform-origin)을 계산.
 // 이미지가 칸 안에 비율대로 들어가 있으므로, 이미지 기준 위치(fx, fy)를 칸 기준 위치로 바꿔줌
+// [v4.10] 확대 방식 변경: 이미지를 작게 그린 뒤 "돋보기처럼 키우는" 방식(transform)은 흐려짐.
+// 대신 이미지를 처음부터 확대된 크기로 그리고 위치만 옮겨서, 원본 화질 그대로 보이게 함.
+// 모든 값은 칸 크기에 대한 % 라서, 칸 크기를 바꿔도 그대로 맞음
 function computeImgStyle(setting, natW, natH) {
+    // [v4.12] 블로그마다 이미지에 자체 스타일(max-width:100% 등)을 강제로 거는 경우가 있어서,
+    // 모든 값에 !important 를 붙이고 위치는 position 대신 margin 으로 잡음 (블로그에서 지워지거나 덮이지 않게)
+    const base = 'display:block!important;max-width:none!important;max-height:none!important;min-width:0!important;min-height:0!important;'
+        + 'padding:0!important;border:0!important;box-shadow:none!important;border-radius:0!important;';
     const zoom = setting.zoom || 1;
-    if (zoom <= 1.001) return 'transform:none;';
+    if (zoom <= 1.001) {
+        return base + 'width:100%!important;height:100%!important;margin:0!important;object-fit:contain!important;';
+    }
     let aw = 1, ah = 1;
     if (natW && natH) {
         if (natW < natH) aw = natW / natH;
         else ah = natH / natW;
     }
+    // 확대 기준점 (칸 기준 %)
     const ox = ((1 - aw) / 2 + setting.fx * aw) * 100;
     const oy = ((1 - ah) / 2 + setting.fy * ah) * 100;
-    return `transform:scale(${zoom});transform-origin:${ox.toFixed(2)}% ${oy.toFixed(2)}%;`;
+    // 확대 전 이미지의 왼쪽·위 위치 (칸 기준 %)
+    const left0 = (1 - aw) / 2 * 100;
+    const top0 = (1 - ah) / 2 * 100;
+    const w = aw * zoom * 100;
+    const h = ah * zoom * 100;
+    const left = ox + zoom * (left0 - ox);
+    const top = oy + zoom * (top0 - oy);
+    // 이미지 칸은 정사각형이라 margin-top % 도 가로 기준으로 계산해도 같음
+    return base + 'object-fit:fill!important;'
+        + `width:${w.toFixed(3)}%!important;height:${h.toFixed(3)}%!important;`
+        + `margin:${top.toFixed(3)}% 0 0 ${left.toFixed(3)}%!important;`;
 }
 
 // 이미지 칸 하나에 크기/확대/위치를 입힘 (인라인 스타일이라 복사·다운로드 결과물에도 그대로 남음)
@@ -241,8 +261,9 @@ function restyleImagesWithSrc(src) {
 }
 
 function styleAvatarBox(box, setting) {
-    box.style.width = `${setting.size}px`;
-    box.style.height = `${setting.size}px`;
+    // [v4.12] 이미지 칸 크기는 고정 (예전에 저장된 크기 설정이 있어도 무시)
+    box.style.removeProperty('width');
+    box.style.removeProperty('height');
     const img = box.querySelector('img');
     if (!img) return;
     const src = img.getAttribute('src');
@@ -286,7 +307,7 @@ function readImageFile(file) {
             const img = new Image();
             img.onerror = () => reject(new Error('decode'));
             img.onload = () => {
-                const MAX = 600;
+                const MAX = 1200; // [v4.10] 확대해도 덜 깨지도록 600 → 1200
                 const scale = Math.min(1, MAX / Math.max(img.width, img.height));
                 if (scale === 1 && file.size < 300 * 1024) return resolve(reader.result);
                 const canvas = document.createElement('canvas');
@@ -397,10 +418,6 @@ function renderImagePanel() {
                     <span>결과 미리보기</span>
                     <div class="avatar-box" data-char-idx="${idx}">${img ? `<img src="${escapeHtml(img)}" alt="">` : ''}</div>
                 </div>
-            </div>
-            <div class="panel-slider-row">
-                <label>크기 <span class="val" data-val="size">${setting.size}px</span></label>
-                <input type="range" data-field="size" min="32" max="200" step="4" value="${setting.size}">
             </div>
             <div class="panel-slider-row">
                 <label>확대 <span class="val" data-val="zoom">${zoomPct}%</span></label>
@@ -717,7 +734,8 @@ function buildLogsFromEntries() {
             id: Math.random().toString(36).substr(2, 9),
             tabName: entry.tabName,
             name: finalName,
-            imgUrl: entry.imgUrl || (matchedLog && matchedLog.imgUrl) || "",
+            // [v4.11] 백업기로 긁어온 이미지를 먼저 쓰고, 없을 때만 파일 안의 이미지를 씀
+            imgUrl: (matchedLog && matchedLog.imgUrl) || entry.imgUrl || "",
             customImg: "",
             message: entry.message,
             color: (matchedLog && matchedLog.color) || entry.color || ((entry.name === "-" || isSystem) ? "#888888" : "#b4b4b4"),
@@ -1078,19 +1096,7 @@ document.getElementById('image-panel-close').addEventListener('click', () => {
     document.getElementById('image-panel').classList.remove('open');
 });
 
-// 패널: 모든 캐릭터 크기 한 번에
-document.getElementById('all-size').addEventListener('input', (e) => {
-    const size = parseInt(e.target.value, 10) || 64;
-    document.getElementById('all-size-value').textContent = `${size}px`;
-    getCharList().forEach(name => {
-        setCharSetting(name, { size });
-        updateCharAvatars(name);
-    });
-    document.querySelectorAll('#image-panel-list input[data-field="size"]').forEach(input => { input.value = size; });
-    document.querySelectorAll('#image-panel-list [data-val="size"]').forEach(label => { label.textContent = `${size}px`; });
-});
-
-// 패널: 캐릭터별 크기 / 확대 슬라이더
+// 패널: 캐릭터별 확대 슬라이더
 document.getElementById('image-panel-list').addEventListener('input', (e) => {
     const field = e.target.dataset.field;
     if (!field) return;
@@ -1098,10 +1104,7 @@ document.getElementById('image-panel-list').addEventListener('input', (e) => {
     const name = globCharNames[card.dataset.charIdx];
     const value = parseInt(e.target.value, 10);
 
-    if (field === 'size') {
-        setCharSetting(name, { size: value });
-        card.querySelector('[data-val="size"]').textContent = `${value}px`;
-    } else if (field === 'zoom') {
+    if (field === 'zoom') {
         setCharSetting(name, { zoom: value / 100 });
         card.querySelector('[data-val="zoom"]').textContent = `${value}%`;
     }
