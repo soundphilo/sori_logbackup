@@ -11,6 +11,14 @@ const HELP_DATA = [
 // 패치노트
 const PATCH_DATA = [
     {
+        version: "v4.9",
+        date: "2026-10-29",
+        changes: [
+            "휴대폰에서 짧은 대사는 글 길이만큼만 나오고, 긴 대사만 나레이션 칸 오른쪽 끝까지 늘어나도록 변경."
+        ]
+    },
+
+    {
         version: "v4.8",
         date: "2026-10-28",
         changes: [
