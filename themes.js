@@ -1,7 +1,7 @@
 const COMMON_LOG_STYLE = `
 .log-container { width: 100%; max-width: 800px; border-radius: 8px; padding: 20px !important; box-shadow: 0 4px 10px rgba(0,0,0,0.15); display: flex; flex-direction: column; gap: 12px; font-family: sans-serif; margin: 20px auto; box-sizing: border-box; }
 .chat-row { display: flex; align-items: flex-start; position: relative; width: 100%; box-sizing: border-box; } 
-.avatar-box { width: 64px; height: 64px; margin-right: 15px; flex-shrink: 0; border-radius: 8px; overflow: hidden; position: relative; isolation: isolate; -webkit-mask-image: -webkit-radial-gradient(white, black); }
+.avatar-box { width: 64px; height: 64px; margin-right: 15px; flex-shrink: 0; border-radius: 8px; overflow: hidden; position: relative; }
 .avatar-box img { width: 100%; height: 100%; object-fit: contain; display: block; }
 .text-wrap { display: flex; flex-direction: column; flex-grow: 1; padding-right: clamp(0px, calc((100% - 560px) * 999), 60px); min-width: 0; } 
 .char-name { font-weight: bold; font-size: 14px; margin-bottom: 6px; display: block; }
