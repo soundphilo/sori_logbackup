@@ -184,7 +184,21 @@
             opacity: 0; transition: opacity 0.2s;
         }
         #output-wrapper .avatar-box:hover .avatar-change-btn { opacity: 1; }
-        @media (hover: none) { .avatar-change-btn { opacity: 0.8; } } /* 터치 화면에서는 항상 보이게 */
+        /* [v4.19] 칸 통째로 옮기기 버튼 (인장 왼쪽 아래) */
+        .avatar-move-btn {
+            position: absolute; left: 3px; bottom: 3px; z-index: 1;
+            width: 24px; height: 24px; padding: 0; border: none; border-radius: 50%;
+            background: rgba(20, 22, 34, 0.85); color: #fff; font-size: 13px; cursor: pointer;
+            display: flex; align-items: center; justify-content: center;
+            opacity: 0; transition: opacity 0.2s;
+        }
+        #output-wrapper .avatar-box:hover .avatar-move-btn { opacity: 1; }
+        @media (hover: none) { .avatar-change-btn, .avatar-move-btn { opacity: 0.8; } } /* 터치 화면에서는 항상 보이게 */
+        /* [v4.19] 옮긴 대사 / 옮기는 중인 대사 표시 (미리보기에서만) */
+        #output-wrapper .bubble-wrapper.moved > p.message-bubble,
+        #output-wrapper .bubble-wrapper.moved > .narration-box { box-shadow: inset 3px 0 0 #ffc44d; }
+        #output-wrapper .placing-source > p.message-bubble,
+        #output-wrapper .placing-source > .narration-box { outline: 2px dashed #4dadff; outline-offset: 2px; }
 
         /* [v4.3] 🖼 버튼을 누르면 나오는 메뉴 */
         .avatar-menu {
@@ -552,7 +566,7 @@
     </div>
 
     <!-- [v4.12] 뒤의 ?v=번호 : 파일을 고칠 때마다 이 번호를 바꾸면 브라우저가 예전 파일 대신 새 파일을 불러옴 -->
-    <script src="info-data.js?v=4.18"></script>
+    <script src="info-data.js?v=4.19"></script>
 
     <script>
         document.addEventListener("DOMContentLoaded", () => {
@@ -612,7 +626,7 @@
 
     <!-- [v4.4] ZIP 파일을 여는 도구 -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
-    <script src="themes.js?v=4.18"></script>
-    <script src="script.js?v=4.18"></script>
+    <script src="themes.js?v=4.19"></script>
+    <script src="script.js?v=4.19"></script>
 </body>
 </html>
