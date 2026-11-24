@@ -22,7 +22,8 @@ let globTabChoice = new Map();      // [v4.13] 탭 이름 → 보여줄지(true/
 let globAppliedTabKey = "";
 let globNarrationTabs = new Map();  // [v4.18] 탭 이름 → 나레이션을 적용할지 (기본: 메인만 켬)
 let globGroupAnchor = new Map();    // [v4.18] '따로' 탭 이름 → 이 대사(로그 id) 바로 앞에 묶어서 넣음 (없으면 맨 뒤)
-let globPlacingTab = null;          // [v4.18] 지금 위치를 옮기는 중인 '따로' 탭
+let globPlacing = null;             // [v4.18][v4.19] 지금 옮기는 중인 것: { kind:'group', tab } 또는 { kind:'logs', ids:[...] }
+let globMoves = new Map();          // [v4.19] 옮긴 대사: 대사 id → 이 대사(id) 바로 앞으로 (옮긴 순서대로 적용)
 let globContextMatchCount = 0;      // [v4.18] 앞뒤 문맥으로 짝지은 줄 수
 let globGuessedImgCount = 0;       // [v4.17] 짝을 못 찾아서 같은 캐릭터의 앞뒤 인장으로 채운 줄 수
 let globFilledCount = 0;           // [v4.15] 파일에서 잘려서 백업기 데이터로 채운 대사 수
@@ -1218,10 +1219,10 @@ function blockSignature(block) {
         return `g\u0001${block.tabName}\u0001${block.count}\u0001${block.anchored}\u0001${block.canMove}`;
     }
     if (block.type === 'narr') {
-        return `n\u0001${block.log.id}\u0001${block.log.tabName}\u0001${block.log.message}`;
+        return `n\u0001${block.log.id}\u0001${block.log.tabName}\u0001${block.log.message}\u0001${globMoves.has(block.log.id) ? 1 : 0}`;
     }
     return `c\u0001${block.name}\u0001${displayImgUrl(block.imgUrl)}\u0001${block.tabName}\u0001${block.color}\u0001`
-        + block.messages.map(m => `${m.id}\u0002${m.message}`).join('\u0001');
+        + block.messages.map(m => `${m.id}\u0002${m.message}\u0002${globMoves.has(m.id) ? 1 : 0}`).join('\u0001');
 }
 
 // 칸 하나의 HTML
@@ -1238,9 +1239,10 @@ function blockHtml(block) {
         const log = block.log;
         return `<div class="chat-row">
                 ${block.tagHtml}
-                <div class="bubble-wrapper" data-log-id="${log.id}" style="width:100%;">
+                <div class="bubble-wrapper${globMoves.has(log.id) ? ' moved' : ''}" data-log-id="${log.id}" style="width:100%;">
                     <div class="narration-box">${log.message}</div>
                     <div class="bubble-actions" style="position:absolute; right:10px; top:5px;">
+                        <button class="action-mini-btn move-btn" title="이 대사를 다른 곳으로 옮기기">이동</button>${globMoves.has(log.id) ? `<button class="action-mini-btn unmove-btn" title="원래 자리로 되돌리기">원래 자리</button>` : ''}
                         <button class="action-mini-btn edit-btn">수정</button>
                         <button class="action-mini-btn delete-btn">삭제</button>
                     </div>
@@ -1251,9 +1253,10 @@ function blockHtml(block) {
     const bubblesHtml = block.messages.map((msgObj) => {
         const isDice = msgObj.message.includes('＞');
         const bubbleClass = isDice ? 'message-bubble dice-bubble' : 'message-bubble';
-        return `<div class="bubble-wrapper" data-log-id="${msgObj.id}">
+        return `<div class="bubble-wrapper${globMoves.has(msgObj.id) ? ' moved' : ''}" data-log-id="${msgObj.id}">
                 <p class="${bubbleClass}">${msgObj.message}</p>
                 <div class="bubble-actions">
+                    <button class="action-mini-btn move-btn" title="이 대사를 다른 곳으로 옮기기">이동</button>${globMoves.has(msgObj.id) ? `<button class="action-mini-btn unmove-btn" title="원래 자리로 되돌리기">원래 자리</button>` : ''}
                     <button class="action-mini-btn edit-btn">수정</button>
                     <button class="action-mini-btn delete-btn">삭제</button>
                 </div>
@@ -1264,12 +1267,27 @@ function blockHtml(block) {
     const shownImg = displayImgUrl(block.imgUrl);
     return `<div class="chat-row">
             ${block.tagHtml}
-            <div class="avatar-box" data-char-idx="${charIdx(block.name)}" data-log-ids="${ids}">${shownImg ? `<img src="${escapeHtml(shownImg)}" alt="">` : ''}<button type="button" class="avatar-change-btn" title="이 이미지 바꾸기">🖼</button></div>
+            <div class="avatar-box" data-char-idx="${charIdx(block.name)}" data-log-ids="${ids}">${shownImg ? `<img src="${escapeHtml(shownImg)}" alt="">` : ''}<button type="button" class="avatar-change-btn" title="이 이미지 바꾸기">🖼</button><button type="button" class="avatar-move-btn" title="이 칸(말풍선 묶음)을 통째로 옮기기">↕</button></div>
             <div class="text-wrap">
                 <span class="char-name" style="color:${block.color}">${block.name}</span>
                 <div class="bubbles-container">${bubblesHtml}</div>
             </div>
         </div>`;
+}
+
+// [v4.19] 옮긴 대사들을 정해 둔 자리로 옮김 (옮긴 순서대로. 갈 자리의 대사가 안 보이면 원래 자리에 둠)
+function applyMoves(list) {
+    if (globMoves.size === 0) return list;
+    const result = list.slice();
+    globMoves.forEach((targetId, id) => {
+        const from = result.findIndex(item => item.id === id);
+        if (from < 0) return;
+        const [item] = result.splice(from, 1);
+        const to = result.findIndex(other => other.id === targetId);
+        if (to < 0) { result.splice(from, 0, item); return; }
+        result.splice(to, 0, item);
+    });
+    return result;
 }
 
 // options.incremental 이 true면: 바뀐 칸만 새로 만들고, 그대로인 칸(이미지 포함)은 다시 쓰기
@@ -1307,7 +1325,7 @@ function renderPreview(allLogs, options = {}) {
         ordered.push(log);
     });
     atEnd.forEach(tab => ordered.push(groupHead(tab), ...groups.get(tab)));
-    logs = ordered;
+    logs = applyMoves(ordered);
     if (logs.length === 0) {
         globBlockNodes = null;
         showStatus("선택한 탭에 대사가 없어요. 상단의 <strong>5. 탭 선택</strong>에서 탭을 골라 주세요.");
@@ -1365,7 +1383,8 @@ function buildFinalHtmlSource() {
     styleAvatarsIn(logContainer); // [v4.7] 복사·다운로드 직전에 이미지 확대 위치를 최신 값으로 다시 계산
     const cloneContainer = logContainer.cloneNode(true);
     // 편집용 버튼은 결과물에서 제거
-    cloneContainer.querySelectorAll('.bubble-actions, .avatar-change-btn, .group-head').forEach(el => el.remove());
+    cloneContainer.querySelectorAll('.bubble-actions, .avatar-change-btn, .avatar-move-btn, .group-head').forEach(el => el.remove());
+    cloneContainer.querySelectorAll('.moved').forEach(el => el.classList.remove('moved'));
     cloneContainer.querySelectorAll('[data-log-ids]').forEach(el => el.removeAttribute('data-log-ids'));
 
     // [v4.4] 파일 안에 들어 있던 이미지는 결과물에 한 번씩만 넣어서 용량을 줄임
@@ -1462,41 +1481,81 @@ document.getElementById('html-file-picker').addEventListener('change', async (e)
 });
 
 // 프리뷰 안의 버튼들 (수정 / 삭제 / 🖼 이미지 바꾸기)
-// [v4.18] '따로' 탭 묶음 위치 옮기기
-function startPlacing(tab) {
-    globPlacingTab = tab;
+// [v4.18][v4.19] 옮기기: '따로' 탭 묶음, 대사 한 줄, 칸(말풍선 묶음) 통째로
+function startPlacing(what) {
+    globPlacing = what;
     document.getElementById('output-wrapper').classList.add('placing');
     const toast = document.getElementById('place-toast');
-    toast.innerHTML = `📦 <strong>${escapeHtml(tab)}</strong> 탭 묶음을 넣을 곳의 대사를 누르면, 그 대사 <strong>바로 앞</strong>에 들어가요. (ESC: 취소)`;
+    const label = what.kind === 'group'
+        ? `📦 <strong>${escapeHtml(what.tab)}</strong> 탭 묶음을`
+        : (what.ids.length > 1 ? `↕ 이 칸(대사 ${what.ids.length}줄)을` : `↕ 이 대사를`);
+    toast.innerHTML = `${label} 넣을 곳의 대사를 누르면, 그 대사 <strong>바로 앞</strong>에 들어가요. (ESC: 취소)`;
     toast.classList.add('show');
+    document.querySelectorAll('#output-wrapper .placing-source').forEach(el => el.classList.remove('placing-source'));
+    if (what.kind === 'logs') {
+        what.ids.forEach(id => document.querySelector(`#output-wrapper [data-log-id="${id}"]`)?.classList.add('placing-source'));
+    }
 }
 function stopPlacing() {
-    globPlacingTab = null;
+    globPlacing = null;
     document.getElementById('output-wrapper').classList.remove('placing');
     document.getElementById('place-toast').classList.remove('show');
+    document.querySelectorAll('#output-wrapper .placing-source').forEach(el => el.classList.remove('placing-source'));
 }
 
 document.getElementById('output-wrapper').addEventListener('click', (e) => {
-    // 위치를 고르는 중이면: 누른 대사 바로 앞에 묶음을 넣음
-    if (globPlacingTab) {
+    // 위치를 고르는 중이면: 누른 대사(말풍선) 바로 앞에 넣음
+    if (globPlacing) {
         e.preventDefault();
         e.stopPropagation();
         const row = e.target.closest('.chat-row');
-        const idEl = row && row.querySelector('[data-log-id]');
-        const log = idEl && LogStore.logs.find(l => l.id === idEl.getAttribute('data-log-id'));
-        if (!log || isTabGrouped(log.tabName)) {
-            document.getElementById('place-toast').innerHTML = `⚠️ '시간순' 탭의 대사를 눌러 주세요. 다른 '따로' 묶음 안에는 넣을 수 없어요. (ESC: 취소)`;
-            return;
+        const idEl = e.target.closest('[data-log-id]') || (row && row.querySelector('[data-log-id]'));
+        const targetId = idEl && idEl.getAttribute('data-log-id');
+        const log = targetId && LogStore.logs.find(l => l.id === targetId);
+        const toast = document.getElementById('place-toast');
+        if (!log) return;
+        if (globPlacing.kind === 'group') {
+            if (isTabGrouped(log.tabName)) {
+                toast.innerHTML = `⚠️ '시간순' 탭의 대사를 눌러 주세요. 다른 '따로' 묶음 안에는 넣을 수 없어요. (ESC: 취소)`;
+                return;
+            }
+            globGroupAnchor.set(globPlacing.tab, log.id);
+        } else {
+            if (globPlacing.ids.includes(targetId)) {
+                toast.innerHTML = `⚠️ 옮길 대사 말고 다른 대사를 눌러 주세요. (ESC: 취소)`;
+                return;
+            }
+            globPlacing.ids.forEach(id => { globMoves.delete(id); globMoves.set(id, targetId); });
         }
-        globGroupAnchor.set(globPlacingTab, log.id);
         stopPlacing();
         refreshContent({ incremental: true });
+        return;
+    }
+    // [v4.19] 대사 한 줄 옮기기 / 원래 자리로
+    const lineMoveBtn = e.target.closest('.move-btn');
+    if (lineMoveBtn) {
+        e.stopPropagation();
+        startPlacing({ kind: 'logs', ids: [lineMoveBtn.closest('.bubble-wrapper').getAttribute('data-log-id')] });
+        return;
+    }
+    const unmoveBtn = e.target.closest('.unmove-btn');
+    if (unmoveBtn) {
+        globMoves.delete(unmoveBtn.closest('.bubble-wrapper').getAttribute('data-log-id'));
+        refreshContent({ incremental: true });
+        return;
+    }
+    // [v4.19] 칸(같은 캐릭터의 말풍선 묶음) 통째로 옮기기
+    const boxMoveBtn = e.target.closest('.avatar-move-btn');
+    if (boxMoveBtn) {
+        e.stopPropagation();
+        const ids = (boxMoveBtn.closest('.avatar-box').dataset.logIds || '').split(',').filter(Boolean);
+        if (ids.length) startPlacing({ kind: 'logs', ids });
         return;
     }
     const moveBtn = e.target.closest('.group-move-btn');
     if (moveBtn) {
         e.stopPropagation();
-        startPlacing(moveBtn.closest('.group-head').dataset.groupTab);
+        startPlacing({ kind: 'group', tab: moveBtn.closest('.group-head').dataset.groupTab });
         return;
     }
     const resetBtn = e.target.closest('.group-reset-btn');
@@ -1638,7 +1697,7 @@ document.addEventListener('keydown', (e) => {
     closeAvatarMenu();
     closeNarrationDropdown();
     closeTabDropdown();
-    if (globPlacingTab) stopPlacing();
+    if (globPlacing) stopPlacing();
     document.getElementById('image-panel').classList.remove('open');
 });
 
