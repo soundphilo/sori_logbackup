@@ -8,11 +8,22 @@ const HELP_DATA = [
     { text: "<strong>순서:</strong> <strong>5. 탭 선택</strong>에서 탭마다 <strong>시간순</strong>(다른 탭과 섞어서) / <strong>따로</strong>(한 덩어리로 묶어서)를 고를 수 있어요. 묶음 위의 <strong>위치 옮기기</strong>를 누르고 대사를 누르면 그 앞으로 옮겨져요. <strong>6. 순서</strong>에서는 모든 탭을 한 번에 바꿔요. 시간순은 로그 파일([all] HTML·JSON·ZIP)을 올렸을 때만 쓸 수 있어요." },
     { text: "<strong>실시간 편집 가능:</strong> 프리뷰 화면에서 대사 위에 마우스를 올리면 개별 대사를 <strong>수정하거나 삭제</strong>할 수 있습니다." },
     { text: "<strong>대사 옮기기:</strong> 대사 위에 마우스를 올리고 <strong>이동</strong>을 누르면 한 줄만, 인장 위 <strong>↕</strong>를 누르면 그 칸을 통째로 옮겨요. 넣을 곳의 대사를 누르면 그 바로 앞에 들어가요. 옮긴 대사는 <strong>원래 자리</strong>로 되돌릴 수 있어요." },
+    { text: "<strong>추가 · 여러 개 고르기:</strong> 대사 위 <strong>추가</strong>로 그 앞뒤에 새 대사나 나레이션을 넣어요. <strong>선택</strong>을 누르면 고르기가 시작되고, 다른 말풍선을 누르면 더 골라져요 (Shift+클릭: 사이를 한꺼번에). 아래 막대에서 한 번에 이동·삭제할 수 있어요." },
     { text: "<strong>결과물 저장:</strong> 편집을 마친 뒤 상단의 버튼을 통해 HTML 코드를 복사하거나 단독 파일로 다운로드하세요." }
 ];
 
 // 패치노트
 const PATCH_DATA = [
+    {
+        version: "v4.20",
+        date: "2026-11-24",
+        changes: [
+            "대사·나레이션을 새로 추가할 수 있게 변경.",
+            "여러 대사를 골라서 한 번에 옮기거나 지울 수 있게 변경.",
+            "선택·추가·이동·수정·삭제 버튼이 항상 줄의 가장 오른쪽 끝에 나오도록 변경."
+        ]
+    },
+
     {
         version: "v4.19",
         date: "2026-11-24",
