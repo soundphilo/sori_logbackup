@@ -16,7 +16,12 @@ const LogStore = {
 
 // 기타 전역 상태
 let globScrapedLogs = null;
-let globIncludeChatter = false;
+let globScrapedTabs = [];           // [v4.13] 백업기가 알려준 탭 순서
+let globEntriesFromScrape = false;  // [v4.13] 파일 없이 백업기 데이터만으로 만든 화면인지
+let globTabChoice = new Map();      // [v4.13] 탭 이름 → 보여줄지(true/false). 기본: 잡담만 끔
+let globAppliedTabKey = "";
+let globFilledCount = 0;           // [v4.15] 파일에서 잘려서 백업기 데이터로 채운 대사 수
+let globOrderMode = 'time';        // [v4.14] 'time' = 시간 순서, 'tab' = 탭별로 모아 보기         // [v4.13] 화면에 이미 반영된 탭 선택
 let globParsedEntries = null;       // [v4.4] 불러온 파일에서 뽑아낸 대사 목록 (파일 형식과 상관없이 같은 모양)
 let globOriginFileName = "";
 let globNarrationNames = new Set(); // 선택된 나레이션 캐릭터들 (여러 명 가능)
@@ -485,6 +490,89 @@ function populateNarrationDropdown() {
     updateDropdownLabel();
 }
 
+// ==========================================
+// [v4.13] 탭 선택 — 모든 탭을 불러와 두고, 고른 탭만 화면·결과물에 보여줌
+// ==========================================
+
+// 로그에 있는 탭 목록 (메인 → 백업기 탭 순서 → 처음 나온 순서)
+function getTabList() {
+    const seen = [];
+    LogStore.logs.forEach(log => { if (!seen.includes(log.tabName)) seen.push(log.tabName); });
+    const order = ['메인', ...globScrapedTabs.map(normalizeTab)];
+    return seen.sort((a, b) => {
+        const ia = order.indexOf(a), ib = order.indexOf(b);
+        return (ia < 0 ? 999 : ia) - (ib < 0 ? 999 : ib) || seen.indexOf(a) - seen.indexOf(b);
+    });
+}
+
+function isTabShown(tabName) {
+    if (!globTabChoice.has(tabName)) globTabChoice.set(tabName, tabName !== '잡담'); // 처음 보는 탭: 잡담만 빼고 켬
+    return globTabChoice.get(tabName);
+}
+
+function tabKey() {
+    return getTabList().filter(isTabShown).join('\u0001');
+}
+
+function populateTabDropdown() {
+    const menu = document.getElementById('tab-dropdown-menu');
+    const btn = document.getElementById('tab-dropdown-btn');
+    if (!menu || !btn) return;
+    const tabs = getTabList();
+    const counts = {};
+    LogStore.logs.forEach(log => { counts[log.tabName] = (counts[log.tabName] || 0) + 1; });
+
+    menu.innerHTML = tabs.length === 0
+        ? `<div class="dropdown-empty">탭이 없습니다</div>`
+        : tabs.map(tab => `
+            <label class="dropdown-item">
+                <input type="checkbox" value="${escapeHtml(tab)}" ${isTabShown(tab) ? 'checked' : ''}>
+                <span>${escapeHtml(tab)}</span><span class="dropdown-count">${counts[tab]}</span>
+            </label>`).join('') + `<div class="dropdown-hint">다 고른 뒤 바깥을 누르면 적용돼요</div>`;
+    btn.disabled = tabs.length === 0;
+    updateTabDropdownLabel();
+    globAppliedTabKey = tabKey();
+}
+
+function updateTabDropdownLabel() {
+    const label = document.getElementById('tab-dropdown-label');
+    if (!label) return;
+    const tabs = getTabList();
+    const shown = tabs.filter(isTabShown);
+    if (shown.length === tabs.length) label.textContent = '전체 탭';
+    else if (shown.length === 0) label.textContent = '선택 안 함';
+    else if (shown.length <= 2) label.textContent = shown.join(', ');
+    else label.textContent = `${shown[0]} 외 ${shown.length - 1}개`;
+}
+
+// [v4.14] 순서 선택칸 상태 맞추기 (파일 없이 백업기만 쓰면 시간 순서를 알 수 없어서 '탭별'만 가능)
+function updateOrderSelect() {
+    const select = document.getElementById('order-select');
+    if (!select) return;
+    const timeOption = select.querySelector('option[value="time"]');
+    if (globEntriesFromScrape) {
+        globOrderMode = 'tab';
+        timeOption.disabled = true;
+        timeOption.textContent = '시간 순서 (로그 파일 필요)';
+    } else {
+        timeOption.disabled = false;
+        timeOption.textContent = '시간 순서';
+    }
+    select.value = globOrderMode;
+    select.disabled = LogStore.logs.length === 0;
+}
+
+function closeTabDropdown() {
+    const dropdown = document.getElementById('tab-dropdown');
+    if (!dropdown || !dropdown.classList.contains('open')) return;
+    dropdown.classList.remove('open');
+    const key = tabKey();
+    if (key !== globAppliedTabKey) {
+        globAppliedTabKey = key;
+        refreshContent({ incremental: true }); // 그대로인 대사 칸은 다시 쓰고, 바뀐 곳만 새로 그림
+    }
+}
+
 function updateDropdownLabel() {
     const label = document.getElementById('dropdown-label');
     if (!label) return;
@@ -707,23 +795,95 @@ async function parseZip(arrayBuffer) {
     return mergeEntryLists(lists);
 }
 
+// [v4.13] 파일 없이 백업기 데이터만으로 대사 목록 만들기 (탭별로 이어서, 탭 안에서는 순서대로)
+function entriesFromScrape() {
+    const logs = Object.values(globScrapedLogs || {});
+    return logs
+        .map((log, i) => ({ log, i }))
+        .sort((a, b) => ((a.log.tabOrder || 0) - (b.log.tabOrder || 0)) || ((a.log.index || 0) - (b.log.index || 0)) || (a.i - b.i))
+        .map(({ log }) => ({
+            tabName: normalizeTab(log.tabName),
+            name: log.name,
+            message: textToHtml(log.message),
+            color: log.color || '',
+            imgUrl: log.imgUrl || '',
+            time: null,
+            isSystem: !!log.isSystem || SYSTEM_NAMES.includes(log.name)
+        }));
+}
+
 // 읽어 온 대사 목록 → 화면에 쓸 로그로 변환 (코코포리아 수집 데이터가 있으면 이미지를 짝지어 줌)
 function buildLogsFromEntries() {
     if (!globParsedEntries) return 0;
 
-    const scraperArray = globScrapedLogs ? JSON.parse(JSON.stringify(Object.values(globScrapedLogs))) : [];
+    // [v4.15] 백업기 데이터를 탭별로, 긁은 순서대로 정리 (ord = 그 탭 안에서 몇 번째 대사인지)
+    const scrapedByTab = new Map();
+    const scrapedByKey = new Map();
+    if (globScrapedLogs) {
+        Object.values(globScrapedLogs)
+            .map(log => ({ ...log, tabName: normalizeTab(log.tabName), used: false, key: getPureKey(log.matchKey || log.message) }))
+            .sort((x, y) => ((x.tabOrder || 0) - (y.tabOrder || 0)) || ((x.index || 0) - (y.index || 0)))
+            .forEach(item => {
+                if (!scrapedByTab.has(item.tabName)) scrapedByTab.set(item.tabName, []);
+                const list = scrapedByTab.get(item.tabName);
+                item.ord = list.length;
+                list.push(item);
+                if (!scrapedByKey.has(item.key)) scrapedByKey.set(item.key, []);
+                scrapedByKey.get(item.key).push(item);
+            });
+    }
+
+    // 파일 대사마다 "그 탭 안에서 몇 번째인지" 계산
+    const fileKeys = globParsedEntries.map(entry => getPureKey(entry.message));
+    const fileOrd = [];
+    const fileCountByTab = new Map();
+    globParsedEntries.forEach((entry, i) => {
+        const n = fileCountByTab.get(entry.tabName) || 0;
+        fileOrd[i] = n;
+        fileCountByTab.set(entry.tabName, n + 1);
+    });
+
+    // [v4.15] 탭마다 파일이 백업기 데이터의 어디부터 어디까지인지 계산
+    //   그 탭에서 딱 한 번만 나오는 대사(기준 대사)로 위치를 맞춤 → "…" 같은 흔한 대사에 속지 않음
+    const tabRange = new Map(); // 탭 → { head: 파일보다 앞에 있는 백업기 대사 수, tailStart: 파일보다 뒤가 시작되는 위치 }
+    scrapedByTab.forEach((list, tab) => {
+        const keyCount = new Map();
+        list.forEach(item => keyCount.set(item.key, (keyCount.get(item.key) || 0) + 1));
+        const isAnchor = (key) => key.length >= 6 && keyCount.get(key) === 1;
+        const indexes = [];
+        globParsedEntries.forEach((entry, i) => { if (entry.tabName === tab) indexes.push(i); });
+        if (indexes.length === 0) return; // 파일에 없는 탭
+
+        const firstAnchor = indexes.find(i => isAnchor(fileKeys[i]));
+        let lastAnchor = -1;
+        for (let k = indexes.length - 1; k >= 0; k--) { if (isAnchor(fileKeys[indexes[k]])) { lastAnchor = indexes[k]; break; } }
+        if (firstAnchor === undefined) { tabRange.set(tab, { head: 0, tailStart: list.length }); return; }
+
+        const posOf = (i) => list.find(item => item.key === fileKeys[i]).ord;
+        const head = Math.max(0, posOf(firstAnchor) - fileOrd[firstAnchor]);
+        const tailStart = Math.min(list.length, posOf(lastAnchor) + (fileCountByTab.get(tab) - 1 - fileOrd[lastAnchor]) + 1);
+        tabRange.set(tab, { head, tailStart });
+    });
+
     const narrationNames = getSelectedNarrations();
     const tempLogs = [];
 
-    globParsedEntries.forEach(entry => {
-        if (!globIncludeChatter && entry.tabName === '잡담') return;
-
+    globParsedEntries.forEach((entry, i) => {
+        // [v4.13] 탭은 여기서 빼지 않고 모두 불러둠 (보여줄 탭은 '탭 선택'에서 고름)
         let matchedLog = null;
-        if (scraperArray.length) {
-            const key = getPureKey(entry.message);
-            matchedLog = scraperArray.find(log => !log.used && log.tabName === entry.tabName && log.name === entry.name && getPureKey(log.matchKey) === key)
-                || scraperArray.find(log => !log.used && log.name === entry.name && getPureKey(log.matchKey) === key)
-                || scraperArray.find(log => !log.used && getPureKey(log.matchKey) === key);
+        const candidates = scrapedByKey.get(fileKeys[i]);
+        if (candidates) {
+            // [v4.15] 같은 탭에서, 있어야 할 위치에 가장 가까운 대사와 짝지음 (같은 대사가 여러 번 나와도 표정 이미지가 섞이지 않게)
+            const range = tabRange.get(entry.tabName);
+            const expected = fileOrd[i] + (range ? range.head : 0);
+            let best = null;
+            candidates.forEach(log => {
+                if (log.used || log.tabName !== entry.tabName) return;
+                if (!best || Math.abs(log.ord - expected) < Math.abs(best.ord - expected)) best = log;
+            });
+            matchedLog = best
+                || candidates.find(log => !log.used && log.name === entry.name)
+                || candidates.find(log => !log.used);
             if (matchedLog) matchedLog.used = true;
         }
 
@@ -731,7 +891,7 @@ function buildLogsFromEntries() {
         const finalName = (matchedLog && matchedLog.name) || entry.name;
 
         tempLogs.push({
-            id: Math.random().toString(36).substr(2, 9),
+            id: `L${i}`, // [v4.13] 다시 불러와도 같은 번호 (바뀐 칸만 다시 그리기 위해)
             tabName: entry.tabName,
             name: finalName,
             // [v4.11] 백업기로 긁어온 이미지를 먼저 쓰고, 없을 때만 파일 안의 이미지를 씀
@@ -744,12 +904,60 @@ function buildLogsFromEntries() {
         });
     });
 
-    preloadImageSizes(tempLogs.map(log => getEffectiveImg(log)));
-    LogStore.setLogs(tempLogs);
+    // [v4.15] 로그 파일이 1만 줄 제한 등으로 잘렸을 때, 잘린 대사를 백업기 데이터로 채움
+    const finalLogs = globEntriesFromScrape ? tempLogs : fillCutLogs(tempLogs, scrapedByTab, tabRange, narrationNames);
+
+    preloadImageSizes(finalLogs.map(log => getEffectiveImg(log)));
+    LogStore.setLogs(finalLogs);
     populateNarrationDropdown();
+    populateTabDropdown();
+    updateOrderSelect();
     globAppliedNarrationKey = narrationKey();
     if (isImagePanelOpen()) renderImagePanel();
-    return tempLogs.length;
+    return finalLogs.length;
+}
+
+// [v4.15] 파일에서 잘린 대사 채우기
+//  - 각 탭에서 "파일이 시작하기 전" / "파일이 끝난 뒤"에 있는 백업기 대사만 채움 (탭 중간은 건드리지 않음)
+//  - 잘린 구간은 탭끼리의 시간 순서를 알 수 없어서, 앞쪽은 맨 앞에·뒤쪽은 맨 끝에 탭별로 묶어서 넣음
+function fillCutLogs(fileLogs, scrapedByTab, tabRange, narrationNames) {
+    globFilledCount = 0;
+    if (scrapedByTab.size === 0) return fileLogs;
+
+    const before = [], after = [], noFileTabs = [];
+    let beforeVotes = 0, afterVotes = 0;
+    [...scrapedByTab.entries()]
+        .sort((a, b) => (a[1][0].tabOrder || 0) - (b[1][0].tabOrder || 0))
+        .forEach(([tab, list]) => {
+            const range = tabRange.get(tab);
+            if (!range) { noFileTabs.push(...list); return; }
+            const head = list.slice(0, range.head);
+            const tail = list.slice(range.tailStart);
+            before.push(...head); after.push(...tail);
+            beforeVotes += head.length; afterVotes += tail.length;
+        });
+    // 파일에 대사가 하나도 없는 탭은, 다른 탭들이 잘린 쪽(대부분 앞쪽)에 함께 넣음
+    (afterVotes > beforeVotes ? after : before).push(...noFileTabs);
+
+    if (before.length === 0 && after.length === 0) return fileLogs;
+
+    const toLog = (item) => {
+        const isSystem = !!item.isSystem || SYSTEM_NAMES.includes(item.name);
+        return {
+            id: `F${item.tabOrder || 0}-${item.index}`,
+            tabName: item.tabName,
+            name: item.name,
+            imgUrl: item.imgUrl || "",
+            customImg: "",
+            message: textToHtml(item.message),
+            color: item.color || ((item.name === "-" || isSystem) ? "#888888" : "#b4b4b4"),
+            isNarration: !isSystem && narrationNames.includes(item.name),
+            isSystem,
+            filled: true
+        };
+    };
+    globFilledCount = before.length + after.length;
+    return [...before.map(toLog), ...fileLogs, ...after.map(toLog)];
 }
 
 // ==========================================
@@ -767,9 +975,20 @@ function refreshContent(options) {
 
 // 이미지가 하나도 없을 때 보여줄 안내 (다운로드 결과물에는 포함되지 않음)
 function getNoticeHtml(logs) {
+    if (globEntriesFromScrape) {
+        return `<div class="notice-banner">ℹ️ 파일 없이 백업기 데이터만으로 보여주고 있어요. 탭끼리의 시간 순서를 알 수 없어서 <strong>탭별로 모아서</strong> 보여줘요. 여러 탭을 시간 순서대로 보려면 코코포리아 로그 파일([all] HTML·JSON·ZIP)을 올려 주세요.</div>`;
+    }
+    const lines = [];
+    // [v4.15] 잘린 대사를 채웠으면 알려줌
+    if (globFilledCount > 0) {
+        lines.push(`ℹ️ 로그 파일에서 잘린 것으로 보이는 대사 <strong>${globFilledCount}개</strong>를 백업기 데이터로 채웠어요. `
+            + `이 구간은 탭끼리의 시간 순서를 알 수 없어서 <strong>탭별로 묶어서</strong> 들어가 있어요.`);
+    }
     const hasAnyImage = logs.some(log => !log.isNarration && !log.isSystem && getEffectiveImg(log));
-    return hasAnyImage ? '' :
-        `<div class="notice-banner">ℹ️ 이 파일에는 캐릭터 이미지가 들어 있지 않아요. 코코포리아에서 <strong>JSON</strong>이나 <strong>ZIP</strong> 형식으로 내보낸 파일을 쓰거나, 데이터 수집을 먼저 하거나, 🖼 이미지 설정에서 직접 넣을 수 있어요.</div>`;
+    if (!hasAnyImage) {
+        lines.push(`ℹ️ 이 파일에는 캐릭터 이미지가 들어 있지 않아요. 코코포리아에서 <strong>JSON</strong>이나 <strong>ZIP</strong> 형식으로 내보낸 파일을 쓰거나, 데이터 수집을 먼저 하거나, 🖼 이미지 설정에서 직접 넣을 수 있어요.`);
+    }
+    return lines.length ? `<div class="notice-banner">${lines.join('<br>')}</div>` : '';
 }
 
 // 로그를 화면의 칸(나레이션 한 줄 / 같은 캐릭터의 연속 대사 묶음) 단위로 나눔
@@ -847,8 +1066,21 @@ function blockHtml(block) {
 }
 
 // options.incremental 이 true면: 바뀐 칸만 새로 만들고, 그대로인 칸(이미지 포함)은 다시 쓰기
-function renderPreview(logs, options = {}) {
+function renderPreview(allLogs, options = {}) {
     const wrapper = document.getElementById('output-wrapper');
+    let logs = allLogs.filter(log => isTabShown(log.tabName)); // [v4.13] 고른 탭만
+    // [v4.14] 탭별로 모아 보기: 탭 순서대로 묶되, 같은 탭 안에서는 원래 순서 유지
+    if (globOrderMode === 'tab') {
+        const order = getTabList();
+        logs = logs.map((log, i) => ({ log, i }))
+            .sort((a, b) => (order.indexOf(a.log.tabName) - order.indexOf(b.log.tabName)) || (a.i - b.i))
+            .map(x => x.log);
+    }
+    if (logs.length === 0) {
+        globBlockNodes = null;
+        showStatus("선택한 탭에 대사가 없어요. 상단의 <strong>5. 탭 선택</strong>에서 탭을 골라 주세요.");
+        return;
+    }
     const blocks = buildBlocks(logs);
     const signatures = blocks.map(blockSignature);
     const container = wrapper.querySelector('.log-container');
@@ -941,15 +1173,28 @@ document.getElementById('theme-select').disabled = true;
 
 window.addEventListener('message', function (event) {
     if (event.data && event.data.type === 'CCFOLIA_RAW_DATA') {
-        event.source.postMessage({ type: 'CCFOLIA_DATA_RECEIVED' }, event.origin);
-        globScrapedLogs = event.data.payload.collectedLogs;
-        globIncludeChatter = event.data.payload.includeChatter;
+        // 받았다고 백업기에 알려줌 (알려주기에 실패해도 데이터 처리는 계속)
+        try {
+            event.source && event.source.postMessage({ type: 'CCFOLIA_DATA_RECEIVED' }, event.origin && event.origin !== 'null' ? event.origin : '*');
+        } catch (e) { /* 무시 */ }
+        const payload = event.data.payload || {};
+        globScrapedLogs = payload.collectedLogs;
+        globScrapedTabs = Array.isArray(payload.tabs) ? payload.tabs : [];
+        // 예전 백업기(잡담 제외 선택)와도 맞게: 잡담을 빼고 긁었다면 잡담 탭을 꺼 둠
+        // [v4.14] 백업기에서 잡담을 긁었으면 잡담 탭을 켜고, 뺐으면 꺼 둠
+        if (payload.includeChatter === false) globTabChoice.set('잡담', false);
+        if (payload.includeChatter === true) globTabChoice.set('잡담', true);
 
-        if (globParsedEntries) {
+        if (globParsedEntries && !globEntriesFromScrape) {
             // 파일을 먼저 올렸다면, 수집 데이터로 다시 불러와 이미지를 채움
             buildLogsFromEntries();
         } else {
-            showStatus("✅ 데이터 수집 완료! 상단에서 [로그 파일 업로드]를 진행해 주세요.");
+            // [v4.13] 파일이 없으면 백업기 데이터만으로 바로 보여줌
+            globEntriesFromScrape = true;
+            globParsedEntries = entriesFromScrape();
+            buildLogsFromEntries();
+            document.getElementById('theme-select').disabled = false;
+            document.getElementById('image-panel-btn').disabled = false;
         }
     }
 });
@@ -969,6 +1214,7 @@ document.getElementById('html-file-picker').addEventListener('change', async (e)
         else entries = parseLogText(await file.text());
 
         globParsedEntries = entries;
+        globEntriesFromScrape = false;
         buildLogsFromEntries();
         document.getElementById('theme-select').disabled = false;
         document.getElementById('image-panel-btn').disabled = false;
@@ -1036,6 +1282,12 @@ document.getElementById('image-file-picker').addEventListener('change', async (e
 });
 
 // [v4.7] 테마를 바꿀 때 로그 전체를 다시 그리지 않고, 색깔 설정(style)만 바꿔 끼움
+// [v4.14] 순서 바꾸기 (그대로인 대사 칸은 다시 쓰고, 바뀐 곳만 새로 그림)
+document.getElementById('order-select').addEventListener('change', (e) => {
+    globOrderMode = e.target.value === 'tab' ? 'tab' : 'time';
+    refreshContent({ incremental: true });
+});
+
 document.getElementById('theme-select').addEventListener('change', (e) => {
     if (e.target.value === 'light') document.body.classList.add('light-theme-view');
     else document.body.classList.remove('light-theme-view');
@@ -1058,8 +1310,23 @@ document.getElementById('dropdown-btn').addEventListener('click', (e) => {
     else dropdown.classList.add('open');
 });
 
+// [v4.13] 탭 선택 드롭다운
+document.getElementById('tab-dropdown-btn').addEventListener('click', (e) => {
+    e.stopPropagation();
+    const dropdown = document.getElementById('tab-dropdown');
+    if (dropdown.classList.contains('open')) closeTabDropdown();
+    else dropdown.classList.add('open');
+});
+document.getElementById('tab-dropdown-menu').addEventListener('change', (e) => {
+    if (e.target.type !== 'checkbox') return;
+    globTabChoice.set(e.target.value, e.target.checked);
+    updateTabDropdownLabel();
+});
+
 // 바깥을 클릭하면 드롭다운 / 🖼 메뉴 닫기
 document.addEventListener('click', (e) => {
+    const tabDropdown = document.getElementById('tab-dropdown');
+    if (tabDropdown && !tabDropdown.contains(e.target)) closeTabDropdown();
     const dropdown = document.getElementById('narration-dropdown');
     if (dropdown && !dropdown.contains(e.target)) closeNarrationDropdown(); // [v4.6] 바깥을 누르면 닫으면서 한 번에 반영
     const menu = document.getElementById('avatar-menu');
@@ -1071,6 +1338,7 @@ document.addEventListener('keydown', (e) => {
     if (e.key !== 'Escape') return;
     closeAvatarMenu();
     closeNarrationDropdown();
+    closeTabDropdown();
     document.getElementById('image-panel').classList.remove('open');
 });
 
