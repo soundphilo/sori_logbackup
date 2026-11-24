@@ -185,6 +185,82 @@ function displayImgUrl(src) {
 }
 
 // 로그용 스타일 생성 (테마)
+// ==========================================
+// [v4.22] 이름 색 자동 조절: 배경과 너무 비슷해서 안 보이는 이름 색은, 같은 색 계열에서 진하게(또는 밝게) 바꿈
+// ==========================================
+const globNameColors = new Map(); // 원래 이름 색 → 번호 (nc-0, nc-1 …)
+function nameClass(color) {
+    const key = String(color || '').trim().toLowerCase();
+    if (!globNameColors.has(key)) globNameColors.set(key, globNameColors.size);
+    return `nc-${globNameColors.get(key)}`;
+}
+function parseColor(text) {
+    const t = String(text || '').trim().toLowerCase();
+    let m = t.match(/^#([0-9a-f]{3,8})$/);
+    if (m) {
+        let h = m[1];
+        if (h.length === 3 || h.length === 4) h = h.split('').map(ch => ch + ch).join('');
+        return [parseInt(h.slice(0, 2), 16), parseInt(h.slice(2, 4), 16), parseInt(h.slice(4, 6), 16)];
+    }
+    m = t.match(/^rgba?\(\s*([\d.]+)[,\s]+([\d.]+)[,\s]+([\d.]+)/);
+    if (m) return [+m[1], +m[2], +m[3]];
+    return null;
+}
+function luminance([r, g, b]) {
+    const f = (v) => { v /= 255; return v <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4); };
+    return 0.2126 * f(r) + 0.7152 * f(g) + 0.0722 * f(b);
+}
+function contrast(a, b) {
+    const la = luminance(a), lb = luminance(b);
+    return (Math.max(la, lb) + 0.05) / (Math.min(la, lb) + 0.05);
+}
+function rgbToHsl([r, g, b]) {
+    r /= 255; g /= 255; b /= 255;
+    const max = Math.max(r, g, b), min = Math.min(r, g, b);
+    let h = 0, s = 0; const l = (max + min) / 2;
+    if (max !== min) {
+        const d = max - min;
+        s = l > 0.5 ? d / (2 - max - min) : d / (max + min);
+        h = max === r ? (g - b) / d + (g < b ? 6 : 0) : max === g ? (b - r) / d + 2 : (r - g) / d + 4;
+        h /= 6;
+    }
+    return [h, s, l];
+}
+function hslToRgb([h, s, l]) {
+    if (s === 0) return [l * 255, l * 255, l * 255].map(Math.round);
+    const q = l < 0.5 ? l * (1 + s) : l + s - l * s, p = 2 * l - q;
+    const f = (t) => { if (t < 0) t += 1; if (t > 1) t -= 1; if (t < 1 / 6) return p + (q - p) * 6 * t; if (t < 1 / 2) return q; if (t < 2 / 3) return p + (q - p) * (2 / 3 - t) * 6; return p; };
+    return [f(h + 1 / 3), f(h), f(h - 1 / 3)].map(v => Math.round(v * 255));
+}
+const toHex = (rgb) => '#' + rgb.map(v => Math.max(0, Math.min(255, v)).toString(16).padStart(2, '0')).join('');
+// 이 테마 배경에서 잘 보이는 이름 색 (잘 보이면 원래 색 그대로)
+function readableNameColor(color, themeName) {
+    const rgb = parseColor(color);
+    const bg = parseColor((THEME_STYLES[themeName] || THEME_STYLES.dark).containerBg);
+    if (!rgb || !bg) return color;
+    // [v4.23] 거의 안 보일 때만 바꿈 (예: 흰 배경에 거의 흰색). 갈색·진한 빨강·보라처럼 그럭저럭 보이는 색은 그대로 둠
+    const NEARLY_INVISIBLE = 1.5;
+    const MIN = 3; // 바꿀 때는 이 정도는 보이게
+    if (contrast(rgb, bg) >= NEARLY_INVISIBLE) return color;
+    const [h, s, l0] = rgbToHsl(rgb);
+    const darker = luminance(bg) > 0.5; // 밝은 배경이면 진하게, 어두운 배경이면 밝게
+    let l = l0;
+    for (let k = 0; k < 40; k++) {
+        l = darker ? Math.max(0, l - 0.025) : Math.min(1, l + 0.025);
+        const cand = hslToRgb([h, s, l]);
+        if (contrast(cand, bg) >= MIN + 0.5) return toHex(cand);
+    }
+    return toHex(hslToRgb([h, s, l]));
+}
+function nameColorCss(themeName, prefix = '') {
+    let css = '';
+    globNameColors.forEach((i, color) => {
+        const c = readableNameColor(color, themeName);
+        if (c !== color) css += `${prefix}.nc-${i} { color: ${c} !important; }\n`;
+    });
+    return css;
+}
+
 function getLogStyles(themeName) {
     const colors = THEME_STYLES[themeName] || THEME_STYLES.dark;
     return `
@@ -195,7 +271,17 @@ function getLogStyles(themeName) {
         p.message-bubble { background-color: ${colors.bubbleBg} !important; color: ${colors.textBubble} !important; }
         p.message-bubble.dice-bubble { background-color: ${colors.diceBg} !important; color: ${colors.textDice} !important; }
         .narration-box { background-color: ${colors.narrationBg} !important; color: ${colors.textNarration} !important; }
+        ${nameColorCss(themeName)}
     </style>`;
+}
+
+// [v4.22] 미리보기의 테마 스타일을 지금 상태로 다시 넣음 (새 이름 색이 생겼을 때 등)
+function refreshPreviewStyle() {
+    const oldStyle = document.querySelector('#output-wrapper > style');
+    if (!oldStyle) return;
+    const tpl = document.createElement('template');
+    tpl.innerHTML = getLogStyles(document.getElementById('theme-select').value || 'dark').trim();
+    oldStyle.replaceWith(tpl.content.firstElementChild);
 }
 
 // 프리뷰 자리에 안내 문구 표시
@@ -1272,7 +1358,7 @@ function blockHtml(block) {
             ${block.tagHtml}
             <div class="avatar-box" data-char-idx="${charIdx(block.name)}" data-log-ids="${ids}">${shownImg ? `<img src="${escapeHtml(shownImg)}" alt="">` : ''}<button type="button" class="avatar-change-btn" title="이 이미지 바꾸기">🖼</button><button type="button" class="avatar-move-btn" title="이 칸(말풍선 묶음)을 통째로 옮기기">↕</button></div>
             <div class="text-wrap">
-                <span class="char-name" style="color:${block.color}">${block.name}</span>
+                <span class="char-name ${nameClass(block.color)}" style="color:${block.color}">${block.name}</span>
                 <div class="bubbles-container">${bubblesHtml}</div>
             </div>
         </div>`;
@@ -1293,8 +1379,37 @@ function applyMoves(list) {
     return result;
 }
 
+// [v4.21] 화면을 다시 그려도 보고 있던 자리가 그대로 있도록: 화면 위쪽에 보이던 대사들을 기억해 뒀다가 다시 맞춤
+function captureScrollAnchor() {
+    const toolbar = document.querySelector('.toolbar');
+    const topLimit = toolbar && getComputedStyle(toolbar).position === 'sticky' ? toolbar.getBoundingClientRect().bottom : 0;
+    const els = Array.from(document.querySelectorAll('#output-wrapper .log-container [data-log-id]'));
+    const first = els.findIndex(el => el.getBoundingClientRect().bottom > topLimit);
+    if (first < 0) return null;
+    // 지워질 수도 있으니 몇 개를 같이 기억 (뒤쪽 것부터 차례로 찾아봄)
+    return els.slice(first, first + 30).map(el => ({ id: el.getAttribute('data-log-id'), top: el.getBoundingClientRect().top }));
+}
+function restoreScrollAnchor(anchor) {
+    if (!anchor) return;
+    for (const a of anchor) {
+        const el = document.querySelector(`#output-wrapper .log-container [data-log-id="${a.id}"]`);
+        if (el) {
+            window.scrollBy(0, el.getBoundingClientRect().top - a.top);
+            return;
+        }
+    }
+}
+
 // options.incremental 이 true면: 바뀐 칸만 새로 만들고, 그대로인 칸(이미지 포함)은 다시 쓰기
 function renderPreview(allLogs, options = {}) {
+    const anchor = captureScrollAnchor();
+    const colorCount = globNameColors.size;
+    renderPreviewInner(allLogs, options);
+    if (globNameColors.size !== colorCount || !options.incremental) refreshPreviewStyle();
+    restoreScrollAnchor(anchor);
+}
+
+function renderPreviewInner(allLogs, options = {}) {
     const wrapper = document.getElementById('output-wrapper');
     let logs = allLogs.filter(log => isTabShown(log.tabName)); // [v4.13] 고른 탭만
     // [v4.16] 순서: '시간순' 탭들은 서로 섞어서 시간 순서대로 먼저, '따로' 탭들은 그 뒤에 탭 순서대로 모아서
@@ -1382,6 +1497,50 @@ function renderPreview(allLogs, options = {}) {
     document.getElementById('download-btn').disabled = false;
 }
 
+// [v4.22] 지금 테마에서는 색을 바꿨지만 다른 테마에서는 원래 색이 잘 보이는 이름은, 바꿨을 때 원래 색으로 되돌림
+function restoreOriginalNameCss(current, other, prefix) {
+    let css = '';
+    globNameColors.forEach((i, color) => {
+        if (readableNameColor(color, current) !== color && readableNameColor(color, other) === color) {
+            css += `${prefix}.nc-${i} { color: ${color} !important; }\n`;
+        }
+    });
+    return css;
+}
+
+// [v4.21] 결과물 위쪽에 '다크 / 라이트 모드' 전환 버튼을 넣음
+//   블로그는 스크립트를 지우는 경우가 많아서, 스크립트 없이 체크 상자 + CSS만으로 바꿈
+let globLastToggleId = '';
+function wrapWithThemeToggle(containerHtml) {
+    const current = document.getElementById('theme-select').value === 'light' ? 'light' : 'dark';
+    const other = current === 'light' ? 'dark' : 'light';
+    const c = THEME_STYLES[current], o = THEME_STYLES[other];
+    const id = 'sori-theme-' + Math.random().toString(36).slice(2, 8);
+    globLastToggleId = id;
+    const on = `#${id}:checked ~ .log-container`;
+    const label = (theme) => theme === 'light' ? '☀️ 라이트 모드' : '🌙 다크 모드';
+    const css = `<style>
+.sori-log { max-width: 800px; margin: 20px auto; }
+.sori-log > .log-container { margin-top: 8px !important; }
+.sori-theme-toggle { position: absolute !important; opacity: 0 !important; width: 1px !important; height: 1px !important; pointer-events: none; }
+.sori-theme-btn { position: relative; display: block; width: 38px; height: 20px; margin: 0 6px 0 auto; padding: 0; box-sizing: border-box;
+  border-radius: 10px; cursor: pointer; user-select: none; transition: background-color .2s;
+  background-color: ${c.diceBg} !important; border: 1px solid ${c.narrationBg}; }
+.sori-theme-btn::after { content: ""; position: absolute; top: 2px; left: ${current === 'dark' ? 2 : 20}px; width: 14px; height: 14px; border-radius: 50%;
+  background-color: ${c.textMain}; transition: left .2s, background-color .2s; }
+#${id}:checked + .sori-theme-btn { background-color: ${o.diceBg} !important; border-color: ${o.narrationBg}; }
+#${id}:checked + .sori-theme-btn::after { left: ${current === 'dark' ? 20 : 2}px; background-color: ${o.textMain}; }
+${on} { background-color: ${o.containerBg} !important; color: ${o.textMain} !important; }
+${on} .avatar-box { background-color: ${o.bubbleBg} !important; }
+${on} p.message-bubble { background-color: ${o.bubbleBg} !important; color: ${o.textBubble} !important; }
+${on} p.message-bubble.dice-bubble { background-color: ${o.diceBg} !important; color: ${o.textDice} !important; }
+${on} .narration-box { background-color: ${o.narrationBg} !important; color: ${o.textNarration} !important; }
+${nameColorCss(other, on + ' ')}
+${restoreOriginalNameCss(current, other, on + ' ')}
+</style>`;
+    return `${css}<div class="sori-log"><input type="checkbox" id="${id}" class="sori-theme-toggle" aria-label="다크/라이트 모드 바꾸기"><label for="${id}" class="sori-theme-btn" title="다크 / 라이트 모드"></label>${containerHtml}</div>`;
+}
+
 function buildFinalHtmlSource() {
     const logContainer = document.querySelector('#output-wrapper .log-container');
     if (!logContainer) return "";
@@ -1418,7 +1577,7 @@ function buildFinalHtmlSource() {
         ? `<style>.avatar-img{display:block;width:100%;height:100%;background-position:center;background-size:contain;background-repeat:no-repeat;}\n${imgCss}</style>`
         : '';
 
-    return getLogStyles(document.getElementById('theme-select').value) + imgStyleTag + cloneContainer.outerHTML;
+    return getLogStyles(document.getElementById('theme-select').value) + imgStyleTag + wrapWithThemeToggle(cloneContainer.outerHTML);
 }
 
 // ==========================================
@@ -1952,6 +2111,7 @@ document.getElementById('download-btn').addEventListener('click', () => {
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>${escapeHtml(baseName || "로그")}</title>
+<style>body:has(#${globLastToggleId}:checked) { background-color: ${(THEME_STYLES[document.getElementById('theme-select').value === 'light' ? 'dark' : 'light']).bodyBg} !important; }</style>
 </head>
 <body style="margin:0; padding:0 12px; background-color:${bodyBg};">
 ${fullHtmlSource}
