@@ -48,8 +48,48 @@
 
         p.message-bubble { position: relative; }
         .bubble-wrapper { position: relative; display: flex; align-items: center; gap: 8px; max-width: 100%; }
-        .bubble-actions { display: flex; gap: 4px; opacity: 0; transition: opacity 0.2s; }
-        .bubble-wrapper:hover .bubble-actions { opacity: 1; }
+        /* [v4.20] 버튼은 항상 줄의 가장 오른쪽 끝에 (대사 길이와 상관없이 같은 자리) */
+        #output-wrapper .bubble-wrapper { width: 100%; }
+        .bubble-actions {
+            display: flex; gap: 4px; opacity: 0; transition: opacity 0.2s; pointer-events: none;
+            position: absolute; right: 0; top: 50%; transform: translateY(-50%); z-index: 2;
+            padding: 3px; border-radius: 6px; background: rgba(15, 17, 26, 0.85);
+        }
+        .bubble-wrapper:hover .bubble-actions { opacity: 1; pointer-events: auto; }
+        #output-wrapper .bubble-wrapper > .bubble-actions[style] { top: 50% !important; right: 6px !important; }
+        /* [v4.20] 여러 개 고르기 */
+        #output-wrapper.select-mode .bubble-wrapper { cursor: pointer; }
+        #output-wrapper .bubble-wrapper.selected > p.message-bubble,
+        #output-wrapper .bubble-wrapper.selected > .narration-box { outline: 2px solid #4dadff; outline-offset: 1px; }
+        #select-bar {
+            position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%); z-index: 2250; display: none;
+            align-items: center; gap: 8px; padding: 8px 12px; border-radius: 10px; max-width: calc(100vw - 32px); box-sizing: border-box;
+            background: #1e2235; color: #e2e8f0; border: 1px solid #4dadff; font-size: 13px; box-shadow: 0 6px 20px rgba(0,0,0,0.5);
+        }
+        #select-bar.show { display: flex; }
+        #select-bar button { padding: 5px 12px; border-radius: 6px; font-size: 12px; cursor: pointer; background: #252940; color: #e2e8f0; border: 1px solid #3b4260; }
+        #select-bar button:hover { border-color: #4dadff; color: #fff; }
+        #select-bar #select-delete:hover { background: #901a1a; border-color: #ff4d4d; }
+        #select-bar .hint { color: #6f7594; font-size: 11px; }
+        /* [v4.20] 대사 추가 창 */
+        #add-dialog { position: fixed; inset: 0; z-index: 2400; display: none; align-items: center; justify-content: center; background: rgba(0,0,0,0.5); }
+        #add-dialog.show { display: flex; }
+        #add-dialog .box {
+            width: 420px; max-width: calc(100vw - 32px); box-sizing: border-box; padding: 18px; border-radius: 12px;
+            background: #141622; border: 1px solid #333955; color: #e2e8f0; font-size: 13px; display: flex; flex-direction: column; gap: 12px;
+        }
+        #add-dialog h3 { margin: 0; font-size: 15px; color: #4dadff; }
+        #add-dialog .ref { color: #8f95b2; font-size: 12px; line-height: 1.5; word-break: break-all; }
+        #add-dialog .row { display: flex; gap: 14px; align-items: center; flex-wrap: wrap; }
+        #add-dialog .row > strong { width: 48px; color: #fff; font-weight: 600; }
+        #add-dialog label { display: inline-flex; gap: 4px; align-items: center; cursor: pointer; }
+        #add-dialog select, #add-dialog input[type="text"] { height: 32px; line-height: 30px; flex: 1; min-width: 120px; }
+        #add-dialog input[type="text"] { background: #1e2235; color: #fff; border: 1px solid #333955; border-radius: 6px; padding: 0 10px; box-sizing: border-box; }
+        #add-dialog textarea {
+            width: 100%; min-height: 90px; box-sizing: border-box; resize: vertical; padding: 8px 10px; border-radius: 6px;
+            background: #1e2235; color: #fff; border: 1px solid #333955; font: 13px/1.6 sans-serif;
+        }
+        #add-dialog .btns { display: flex; justify-content: flex-end; gap: 8px; }
 
         .action-mini-btn { background: #252940; color: #8f95b2; border: 1px solid #3b4260; padding: 2px 6px; border-radius: 4px; font-size: 11px; cursor: pointer; transition: 0.1s; }
         .action-mini-btn:hover { color: #fff; background: #4dadff; border-color: #4dadff; }
@@ -544,6 +584,40 @@
     <input type="file" id="image-file-picker" accept="image/*" hidden>
     <div id="place-toast"></div>
 
+    <!-- [v4.20] 여러 개 골랐을 때 나오는 막대 -->
+    <div id="select-bar">
+        <span id="select-count">0개 선택됨</span>
+        <button type="button" id="select-move">이동</button>
+        <button type="button" id="select-delete">삭제</button>
+        <button type="button" id="select-clear">선택 해제</button>
+        <span class="hint">말풍선 클릭: 더 고르기 · Shift+클릭: 사이를 한꺼번에 · ESC: 해제</span>
+    </div>
+
+    <!-- [v4.20] 대사·나레이션 추가 창 -->
+    <div id="add-dialog">
+        <div class="box">
+            <h3>➕ 대사·나레이션 추가</h3>
+            <div class="ref" id="add-ref-text"></div>
+            <div class="row"><strong>종류</strong>
+                <label><input type="radio" name="add-kind" value="say" checked> 대사</label>
+                <label><input type="radio" name="add-kind" value="narr"> 나레이션</label>
+            </div>
+            <div class="row" id="add-name-row"><strong>캐릭터</strong>
+                <select id="add-name"></select>
+                <input type="text" id="add-custom-name" placeholder="캐릭터 이름" style="display:none">
+            </div>
+            <div class="row"><strong>위치</strong>
+                <label><input type="radio" name="add-where" value="after" checked> 이 대사 아래</label>
+                <label><input type="radio" name="add-where" value="before"> 이 대사 위</label>
+            </div>
+            <textarea id="add-text" placeholder="내용을 입력하세요 (Ctrl+Enter: 바로 추가)"></textarea>
+            <div class="btns">
+                <button type="button" class="btn btn-copy" id="add-cancel">취소</button>
+                <button type="button" class="btn btn-download" id="add-ok">추가</button>
+            </div>
+        </div>
+    </div>
+
     <div class="info-panel-container">
         <button class="info-toggle-btn" id="info-master-btn" onclick="toggleInfoCard()">💡</button>
 
@@ -566,7 +640,7 @@
     </div>
 
     <!-- [v4.12] 뒤의 ?v=번호 : 파일을 고칠 때마다 이 번호를 바꾸면 브라우저가 예전 파일 대신 새 파일을 불러옴 -->
-    <script src="info-data.js?v=4.19"></script>
+    <script src="info-data.js?v=4.20"></script>
 
     <script>
         document.addEventListener("DOMContentLoaded", () => {
@@ -626,7 +700,7 @@
 
     <!-- [v4.4] ZIP 파일을 여는 도구 -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
-    <script src="themes.js?v=4.19"></script>
-    <script src="script.js?v=4.19"></script>
+    <script src="themes.js?v=4.20"></script>
+    <script src="script.js?v=4.20"></script>
 </body>
 </html>
