@@ -23,6 +23,9 @@ let globAppliedTabKey = "";
 let globNarrationTabs = new Map();  // [v4.18] 탭 이름 → 나레이션을 적용할지 (기본: 메인만 켬)
 let globGroupAnchor = new Map();    // [v4.18] '따로' 탭 이름 → 이 대사(로그 id) 바로 앞에 묶어서 넣음 (없으면 맨 뒤)
 let globPlacing = null;             // [v4.18][v4.19] 지금 옮기는 중인 것: { kind:'group', tab } 또는 { kind:'logs', ids:[...] }
+let globSelected = new Set();       // [v4.20] 여러 개 고른 대사 id
+let globLastSelected = null;        // [v4.20] Shift+클릭 범위 선택의 시작점
+let globAddCounter = 0;             // [v4.20] 새로 추가한 대사 번호
 let globMoves = new Map();          // [v4.19] 옮긴 대사: 대사 id → 이 대사(id) 바로 앞으로 (옮긴 순서대로 적용)
 let globContextMatchCount = 0;      // [v4.18] 앞뒤 문맥으로 짝지은 줄 수
 let globGuessedImgCount = 0;       // [v4.17] 짝을 못 찾아서 같은 캐릭터의 앞뒤 인장으로 채운 줄 수
@@ -1242,7 +1245,7 @@ function blockHtml(block) {
                 <div class="bubble-wrapper${globMoves.has(log.id) ? ' moved' : ''}" data-log-id="${log.id}" style="width:100%;">
                     <div class="narration-box">${log.message}</div>
                     <div class="bubble-actions" style="position:absolute; right:10px; top:5px;">
-                        <button class="action-mini-btn move-btn" title="이 대사를 다른 곳으로 옮기기">이동</button>${globMoves.has(log.id) ? `<button class="action-mini-btn unmove-btn" title="원래 자리로 되돌리기">원래 자리</button>` : ''}
+                        <button class="action-mini-btn select-btn" title="여러 개 골라서 한 번에 옮기거나 지우기">선택</button><button class="action-mini-btn add-btn" title="이 대사 앞이나 뒤에 새 대사·나레이션 넣기">추가</button><button class="action-mini-btn move-btn" title="이 대사를 다른 곳으로 옮기기">이동</button>${globMoves.has(log.id) ? `<button class="action-mini-btn unmove-btn" title="원래 자리로 되돌리기">원래 자리</button>` : ''}
                         <button class="action-mini-btn edit-btn">수정</button>
                         <button class="action-mini-btn delete-btn">삭제</button>
                     </div>
@@ -1256,7 +1259,7 @@ function blockHtml(block) {
         return `<div class="bubble-wrapper${globMoves.has(msgObj.id) ? ' moved' : ''}" data-log-id="${msgObj.id}">
                 <p class="${bubbleClass}">${msgObj.message}</p>
                 <div class="bubble-actions">
-                    <button class="action-mini-btn move-btn" title="이 대사를 다른 곳으로 옮기기">이동</button>${globMoves.has(msgObj.id) ? `<button class="action-mini-btn unmove-btn" title="원래 자리로 되돌리기">원래 자리</button>` : ''}
+                    <button class="action-mini-btn select-btn" title="여러 개 골라서 한 번에 옮기거나 지우기">선택</button><button class="action-mini-btn add-btn" title="이 대사 앞이나 뒤에 새 대사·나레이션 넣기">추가</button><button class="action-mini-btn move-btn" title="이 대사를 다른 곳으로 옮기기">이동</button>${globMoves.has(msgObj.id) ? `<button class="action-mini-btn unmove-btn" title="원래 자리로 되돌리기">원래 자리</button>` : ''}
                     <button class="action-mini-btn edit-btn">수정</button>
                     <button class="action-mini-btn delete-btn">삭제</button>
                 </div>
@@ -1359,6 +1362,7 @@ function renderPreview(allLogs, options = {}) {
         container.replaceChildren(fragment);
         created.forEach(el => styleAvatarsIn(el));
         globBlockNodes = nextNodes;
+        syncSelection();
 
         // 안내 문구가 필요해졌거나 필요 없어졌으면 맞춰 줌
         const oldNotice = wrapper.querySelector('.notice-banner');
@@ -1373,6 +1377,7 @@ function renderPreview(allLogs, options = {}) {
     const newContainer = wrapper.querySelector('.log-container');
     globBlockNodes = Array.from(newContainer.children).map((el, i) => ({ sig: signatures[i], el }));
     styleAvatarsIn(wrapper);
+    syncSelection();
     document.getElementById('copy-btn').disabled = false;
     document.getElementById('download-btn').disabled = false;
 }
@@ -1384,7 +1389,7 @@ function buildFinalHtmlSource() {
     const cloneContainer = logContainer.cloneNode(true);
     // 편집용 버튼은 결과물에서 제거
     cloneContainer.querySelectorAll('.bubble-actions, .avatar-change-btn, .avatar-move-btn, .group-head').forEach(el => el.remove());
-    cloneContainer.querySelectorAll('.moved').forEach(el => el.classList.remove('moved'));
+    cloneContainer.querySelectorAll('.moved, .selected').forEach(el => el.classList.remove('moved', 'selected'));
     cloneContainer.querySelectorAll('[data-log-ids]').forEach(el => el.removeAttribute('data-log-ids'));
 
     // [v4.4] 파일 안에 들어 있던 이미지는 결과물에 한 번씩만 넣어서 용량을 줄임
@@ -1481,6 +1486,132 @@ document.getElementById('html-file-picker').addEventListener('change', async (e)
 });
 
 // 프리뷰 안의 버튼들 (수정 / 삭제 / 🖼 이미지 바꾸기)
+// ==========================================
+// [v4.20] 여러 개 고르기: 고른 대사를 한 번에 옮기거나 지움
+// ==========================================
+function displayedIds() {
+    return Array.from(document.querySelectorAll('#output-wrapper .log-container [data-log-id]')).map(el => el.getAttribute('data-log-id'));
+}
+function syncSelection() {
+    // 지워졌거나 안 보이는 대사는 선택에서 뺌
+    const shown = new Set(displayedIds());
+    [...globSelected].forEach(id => { if (!shown.has(id)) globSelected.delete(id); });
+    document.querySelectorAll('#output-wrapper .bubble-wrapper').forEach(el => {
+        el.classList.toggle('selected', globSelected.has(el.getAttribute('data-log-id')));
+    });
+    document.getElementById('output-wrapper').classList.toggle('select-mode', globSelected.size > 0);
+    const bar = document.getElementById('select-bar');
+    if (!bar) return;
+    if (globSelected.size > 0) {
+        document.getElementById('select-count').textContent = `${globSelected.size}개 선택됨`;
+        bar.classList.add('show');
+    } else {
+        bar.classList.remove('show');
+    }
+}
+function toggleSelect(id, withRange) {
+    if (withRange && globLastSelected) {
+        const order = displayedIds();
+        const a = order.indexOf(globLastSelected), b = order.indexOf(id);
+        if (a >= 0 && b >= 0) {
+            order.slice(Math.min(a, b), Math.max(a, b) + 1).forEach(x => globSelected.add(x));
+            globLastSelected = id;
+            syncSelection();
+            return;
+        }
+    }
+    if (globSelected.has(id)) globSelected.delete(id); else globSelected.add(id);
+    globLastSelected = id;
+    syncSelection();
+}
+function clearSelection() {
+    globSelected.clear();
+    globLastSelected = null;
+    syncSelection();
+}
+
+// ==========================================
+// [v4.20] 새 대사·나레이션 넣기
+// ==========================================
+let globAddRef = null; // 기준이 되는 대사 id
+
+// 이 캐릭터의 인장·색: 기준 대사에서 가장 가까운 같은 캐릭터 대사의 것을 씀
+function lookFor(name, refIndex) {
+    const logs = LogStore.logs;
+    for (let d = 0; d < logs.length; d++) {
+        for (const k of [refIndex - d, refIndex + d]) {
+            const log = logs[k];
+            if (log && log.name === name && (log.customImg || log.imgUrl)) return { img: log.customImg || log.imgUrl, color: log.color };
+        }
+    }
+    const any = logs.find(log => log.name === name);
+    return { img: '', color: any ? any.color : '#b4b4b4' };
+}
+
+function openAddDialog(refId) {
+    const ref = LogStore.logs.find(log => log.id === refId);
+    if (!ref) return;
+    globAddRef = refId;
+    const select = document.getElementById('add-name');
+    const names = getCharList();
+    select.innerHTML = names.map(n => `<option value="${escapeHtml(n)}" ${n === ref.name ? 'selected' : ''}>${escapeHtml(n)}</option>`).join('')
+        + `<option value="__custom">직접 입력…</option>`;
+    document.getElementById('add-custom-name').value = '';
+    document.getElementById('add-custom-name').style.display = 'none';
+    document.getElementById('add-text').value = '';
+    // 열 때마다 기본값으로: 대사 / 이 대사 아래 (나레이션 줄에서 열면 나레이션으로)
+    document.querySelector(`input[name="add-kind"][value="${ref.name === '-' ? 'narr' : 'say'}"]`).checked = true;
+    document.querySelector('input[name="add-where"][value="after"]').checked = true;
+    document.getElementById('add-ref-text').textContent = `기준 대사: [${ref.tabName}] ${ref.name === '-' ? '나레이션' : ref.name} — ${ref.message.replace(/<[^>]+>/g, ' ').slice(0, 40)}`;
+    updateAddKind();
+    document.getElementById('add-dialog').classList.add('show');
+    setTimeout(() => document.getElementById('add-text').focus(), 30);
+}
+function closeAddDialog() {
+    document.getElementById('add-dialog').classList.remove('show');
+    globAddRef = null;
+}
+function updateAddKind() {
+    const kind = document.querySelector('input[name="add-kind"]:checked').value;
+    document.getElementById('add-name-row').style.display = kind === 'say' ? '' : 'none';
+}
+function confirmAdd() {
+    const text = document.getElementById('add-text').value.trim();
+    if (!text) { document.getElementById('add-text').focus(); return; }
+    const kind = document.querySelector('input[name="add-kind"]:checked').value;
+    const where = document.querySelector('input[name="add-where"]:checked').value;
+    let name = '-';
+    if (kind === 'say') {
+        name = document.getElementById('add-name').value;
+        if (name === '__custom') name = document.getElementById('add-custom-name').value.trim();
+        if (!name) { document.getElementById('add-custom-name').focus(); return; }
+    }
+    const logs = LogStore.logs.slice();
+    const refIndex = logs.findIndex(log => log.id === globAddRef);
+    if (refIndex < 0) { closeAddDialog(); return; }
+    const ref = logs[refIndex];
+    const look = kind === 'say' ? lookFor(name, refIndex) : { img: '', color: '#888888' };
+    const newLog = {
+        id: `N${++globAddCounter}`,
+        tabName: ref.tabName,
+        name,
+        imgUrl: look.img,
+        customImg: "",
+        message: textToHtml(text),
+        color: look.color,
+        isNarration: kind === 'say' ? isNarrationFor(name, ref.tabName, false, getSelectedNarrations()) : false,
+        isSystem: false,
+        added: true
+    };
+    logs.splice(where === 'after' ? refIndex + 1 : refIndex, 0, newLog);
+    // 기준 대사를 옮겨 둔 상태면, 새 대사도 그 옆으로 따라가게 함
+    if (where === 'before') globMoves.set(newLog.id, ref.id);
+    else if (globMoves.has(ref.id)) globMoves.set(newLog.id, globMoves.get(ref.id));
+    closeAddDialog();
+    LogStore.setLogs(logs, { incremental: true });
+    if (kind === 'say' && !getCharList().includes(name)) populateNarrationDropdown();
+}
+
 // [v4.18][v4.19] 옮기기: '따로' 탭 묶음, 대사 한 줄, 칸(말풍선 묶음) 통째로
 function startPlacing(what) {
     globPlacing = what;
@@ -1526,10 +1657,32 @@ document.getElementById('output-wrapper').addEventListener('click', (e) => {
                 return;
             }
             globPlacing.ids.forEach(id => { globMoves.delete(id); globMoves.set(id, targetId); });
+            if (globPlacing.fromSelection) { globSelected.clear(); globLastSelected = null; }
         }
         stopPlacing();
         refreshContent({ incremental: true });
         return;
+    }
+    // [v4.20] 선택 / 추가 버튼
+    const selectBtn = e.target.closest('.select-btn');
+    if (selectBtn) {
+        e.stopPropagation();
+        toggleSelect(selectBtn.closest('.bubble-wrapper').getAttribute('data-log-id'), e.shiftKey);
+        return;
+    }
+    const addBtn = e.target.closest('.add-btn');
+    if (addBtn) {
+        e.stopPropagation();
+        openAddDialog(addBtn.closest('.bubble-wrapper').getAttribute('data-log-id'));
+        return;
+    }
+    // [v4.20] 고르는 중이면, 말풍선을 누르기만 해도 골라짐 (Shift+클릭: 사이를 한꺼번에)
+    if (globSelected.size > 0 && !e.target.closest('button')) {
+        const bubble = e.target.closest('.bubble-wrapper');
+        if (bubble) {
+            toggleSelect(bubble.getAttribute('data-log-id'), e.shiftKey);
+            return;
+        }
     }
     // [v4.19] 대사 한 줄 옮기기 / 원래 자리로
     const lineMoveBtn = e.target.closest('.move-btn');
@@ -1573,7 +1726,7 @@ document.getElementById('output-wrapper').addEventListener('click', (e) => {
     }
     if (e.target.classList.contains('delete-btn')) {
         const logId = e.target.closest('.bubble-wrapper').getAttribute('data-log-id');
-        LogStore.setLogs(LogStore.logs.filter(log => log.id !== logId));
+        LogStore.setLogs(LogStore.logs.filter(log => log.id !== logId), { incremental: true });
     }
     if (e.target.classList.contains('edit-btn')) {
         const logId = e.target.closest('.bubble-wrapper').getAttribute('data-log-id');
@@ -1698,6 +1851,8 @@ document.addEventListener('keydown', (e) => {
     closeNarrationDropdown();
     closeTabDropdown();
     if (globPlacing) stopPlacing();
+    else if (document.getElementById('add-dialog').classList.contains('show')) closeAddDialog();
+    else if (globSelected.size > 0) clearSelection();
     document.getElementById('image-panel').classList.remove('open');
 });
 
@@ -1819,4 +1974,36 @@ document.getElementById('copy-btn').addEventListener('click', async () => {
         await navigator.clipboard.writeText(fullHtmlSource);
         alert("✨ HTML 전체 소스코드가 클립보드에 복사되었습니다!");
     } catch (err) { alert("클립보드 복사에 실패했습니다."); }
+});
+
+// ==========================================
+// [v4.20] 선택 막대 (여러 개 옮기기 / 지우기)
+// ==========================================
+document.getElementById('select-move').addEventListener('click', () => {
+    const order = displayedIds();
+    const ids = order.filter(id => globSelected.has(id)); // 화면 순서대로
+    if (ids.length) startPlacing({ kind: 'logs', ids, fromSelection: true });
+});
+document.getElementById('select-delete').addEventListener('click', () => {
+    const count = globSelected.size;
+    if (!count) return;
+    if (!confirm(`고른 대사 ${count}개를 지울까요?`)) return;
+    const removing = new Set(globSelected);
+    clearSelection();
+    LogStore.setLogs(LogStore.logs.filter(log => !removing.has(log.id)), { incremental: true });
+});
+document.getElementById('select-clear').addEventListener('click', clearSelection);
+
+// [v4.20] 대사 추가 창
+document.querySelectorAll('input[name="add-kind"]').forEach(r => r.addEventListener('change', updateAddKind));
+document.getElementById('add-name').addEventListener('change', (e) => {
+    const custom = document.getElementById('add-custom-name');
+    custom.style.display = e.target.value === '__custom' ? '' : 'none';
+    if (e.target.value === '__custom') custom.focus();
+});
+document.getElementById('add-ok').addEventListener('click', confirmAdd);
+document.getElementById('add-cancel').addEventListener('click', closeAddDialog);
+document.getElementById('add-dialog').addEventListener('click', (e) => { if (e.target.id === 'add-dialog') closeAddDialog(); });
+document.getElementById('add-text').addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) confirmAdd(); // Ctrl+Enter로 바로 추가
 });
