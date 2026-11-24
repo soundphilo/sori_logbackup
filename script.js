@@ -20,6 +20,11 @@ let globScrapedTabs = [];           // [v4.13] 백업기가 알려준 탭 순서
 let globEntriesFromScrape = false;  // [v4.13] 파일 없이 백업기 데이터만으로 만든 화면인지
 let globTabChoice = new Map();      // [v4.13] 탭 이름 → 보여줄지(true/false). 기본: 잡담만 끔
 let globAppliedTabKey = "";
+let globNarrationTabs = new Map();  // [v4.18] 탭 이름 → 나레이션을 적용할지 (기본: 메인만 켬)
+let globGroupAnchor = new Map();    // [v4.18] '따로' 탭 이름 → 이 대사(로그 id) 바로 앞에 묶어서 넣음 (없으면 맨 뒤)
+let globPlacingTab = null;          // [v4.18] 지금 위치를 옮기는 중인 '따로' 탭
+let globContextMatchCount = 0;      // [v4.18] 앞뒤 문맥으로 짝지은 줄 수
+let globGuessedImgCount = 0;       // [v4.17] 짝을 못 찾아서 같은 캐릭터의 앞뒤 인장으로 채운 줄 수
 let globFilledCount = 0;           // [v4.15] 파일에서 잘려서 백업기 데이터로 채운 대사 수
 let globTabGrouped = new Map();     // [v4.16] 탭 이름 → true면 '따로 모아 보기', false면 '시간 순서'(다른 탭과 섞어서)
 let globParsedEntries = null;       // [v4.4] 불러온 파일에서 뽑아낸 대사 목록 (파일 형식과 상관없이 같은 모양)
@@ -505,9 +510,14 @@ function getTabList() {
     });
 }
 
-// [v4.16] 나레이션 캐릭터는 메인 탭에서만 나레이션으로 보여주고, 다른 탭에서는 일반 대화로 보여줌
+// [v4.16][v4.18] 나레이션 캐릭터는 '나레이션'을 켠 탭에서만 나레이션으로, 나머지 탭에서는 일반 대화로 보여줌
+//   기본값: 메인 탭만 켬. '5. 탭 선택'에서 탭마다 바꿀 수 있음
+function isNarrationTab(tabName) {
+    if (!globNarrationTabs.has(tabName)) return tabName === '메인';
+    return globNarrationTabs.get(tabName);
+}
 function isNarrationFor(name, tabName, isSystem, narrationNames) {
-    return !isSystem && tabName === '메인' && narrationNames.includes(name);
+    return !isSystem && isNarrationTab(tabName) && narrationNames.includes(name);
 }
 
 // [v4.16] 탭을 따로 모아 볼지 (백업기 데이터만 있으면 시간 순서를 알 수 없어서 항상 따로)
@@ -522,7 +532,7 @@ function isTabShown(tabName) {
 }
 
 function tabKey() {
-    return getTabList().map(tab => `${tab}:${isTabShown(tab) ? 1 : 0}${isTabGrouped(tab) ? 1 : 0}`).join('\u0001');
+    return getTabList().map(tab => `${tab}:${isTabShown(tab) ? 1 : 0}${isTabGrouped(tab) ? 1 : 0}${isNarrationTab(tab) ? 1 : 0}`).join('\u0001');
 }
 
 // [v4.16] 탭마다 '시간순 / 따로' 버튼 글자
@@ -549,7 +559,8 @@ function populateTabDropdown() {
                 </label>
                 <span class="dropdown-count">${counts[tab]}</span>
                 ${orderToggleHtml(tab)}
-            </div>`).join('') + `<div class="dropdown-hint">체크: 보여줄 탭 · 시간순: 다른 탭과 섞어서 · 따로: 맨 뒤에 모아서<br>다 고른 뒤 바깥을 누르면 적용돼요</div>`;
+                <button type="button" class="narr-toggle ${isNarrationTab(tab) ? 'on' : ''}" data-tab="${escapeHtml(tab)}" title="이 탭에서 나레이션 캐릭터를 나레이션으로 보여줄지">나레이션 ${isNarrationTab(tab) ? '켬' : '끔'}</button>
+            </div>`).join('') + `<div class="dropdown-hint">체크: 보여줄 탭 · 시간순: 다른 탭과 섞어서 · 따로: 한 덩어리로 묶어서<br>나레이션 켬: 이 탭에서도 나레이션 캐릭터를 나레이션으로<br>다 고른 뒤 바깥을 누르면 적용돼요</div>`;
     btn.disabled = tabs.length === 0;
     updateTabDropdownLabel();
     globAppliedTabKey = tabKey();
@@ -592,7 +603,7 @@ function closeTabDropdown() {
     if (key !== globAppliedTabKey) {
         globAppliedTabKey = key;
         updateOrderSelect();
-        refreshContent({ incremental: true }); // 그대로인 대사 칸은 다시 쓰고, 바뀐 곳만 새로 그림
+        applyNarrationToLogs(); // 탭별 나레이션 설정까지 반영해서, 바뀐 칸만 새로 그림
     }
 }
 
@@ -836,6 +847,43 @@ function entriesFromScrape() {
 }
 
 // 읽어 온 대사 목록 → 화면에 쓸 로그로 변환 (코코포리아 수집 데이터가 있으면 이미지를 짝지어 줌)
+// [v4.18] 두 글자 묶음이 얼마나 겹치는지 (0~1). 글자가 조금 바뀐 대사도 비슷하다고 알아봄
+function textSimilarity(a, b) {
+    if (!a || !b) return 0;
+    if (a === b) return 1;
+    const grams = (t) => { const m = new Map(); for (let k = 0; k < t.length - 1; k++) { const g = t.slice(k, k + 2); m.set(g, (m.get(g) || 0) + 1); } return m; };
+    if (a.length < 2 || b.length < 2) return a.includes(b) || b.includes(a) ? 0.6 : 0;
+    const ga = grams(a), gb = grams(b);
+    let common = 0;
+    ga.forEach((n, g) => { common += Math.min(n, gb.get(g) || 0); });
+    return (2 * common) / (a.length - 1 + b.length - 1);
+}
+
+// [v4.18] 빈칸 안의 파일 대사(gap)와 백업기 대사(pool)를 순서를 지키며 짝지음. 짝지은 수를 돌려줌
+function pairByContext(gap, pool, matches, fileKeys) {
+    let count = 0;
+    let from = 0;
+    const sameCount = gap.length === pool.length;
+    gap.forEach((i, k) => {
+        const entry = globParsedEntries[i];
+        let best = null, bestScore = 0, bestPos = -1;
+        for (let p = from; p < pool.length; p++) {
+            const item = pool[p];
+            if (item.used || item.name !== entry.name) continue;
+            let score = textSimilarity(fileKeys[i], item.key);
+            if (sameCount && p === k) score += 0.3;  // 빈칸 크기가 같으면 같은 자리를 더 믿음
+            if (score > bestScore) { best = item; bestScore = score; bestPos = p; }
+        }
+        if (best && bestScore >= 0.35) {
+            best.used = true;
+            matches[i] = best;
+            from = bestPos + 1;
+            count++;
+        }
+    });
+    return count;
+}
+
 function buildLogsFromEntries() {
     if (!globParsedEntries) return 0;
 
@@ -914,26 +962,91 @@ function buildLogsFromEntries() {
 
     const narrationNames = getSelectedNarrations();
     const tempLogs = [];
+    const matches = [];
+
+    // 1) 글자가 똑같은 대사끼리 짝짓기
+    //   [v4.18] 같은 탭에서 '있어야 할 자리' 근처(앞뒤 40줄)에 있는 같은 대사하고만 짝지음.
+    //   "진짜로?"와 "진짜로//////"처럼 기호를 빼면 같아지는 짧은 대사가 멀리 있는 엉뚱한 줄과 짝지어지는 걸 막음.
+    //   자리를 놓치면, 그 탭에서 딱 한 번만 나오는 대사로 다시 자리를 맞춤.
+    const keyCountByTab = new Map();
+    scrapedByTab.forEach((list, tab) => {
+        const m = new Map();
+        list.forEach(item => m.set(item.key, (m.get(item.key) || 0) + 1));
+        keyCountByTab.set(tab, m);
+    });
+    const fileKeyCountByTab = new Map();
+    globParsedEntries.forEach((entry, i) => {
+        if (!fileKeyCountByTab.has(entry.tabName)) fileKeyCountByTab.set(entry.tabName, new Map());
+        const m = fileKeyCountByTab.get(entry.tabName);
+        m.set(fileKeys[i], (m.get(fileKeys[i]) || 0) + 1);
+    });
+    const lastMatch = new Map(); // 탭 → { ord, fileOrd } 가장 최근에 짝지은 자리
+    const WINDOW = 40;
 
     globParsedEntries.forEach((entry, i) => {
         // [v4.13] 탭은 여기서 빼지 않고 모두 불러둠 (보여줄 탭은 '탭 선택'에서 고름)
         let matchedLog = null;
         const candidates = scrapedByKey.get(fileKeys[i]);
         if (candidates) {
-            // [v4.15] 같은 탭에서, 있어야 할 위치에 가장 가까운 대사와 짝지음 (같은 대사가 여러 번 나와도 표정 이미지가 섞이지 않게)
-            const range = tabRange.get(entry.tabName);
-            const expected = fileOrd[i] + (range ? range.head : 0);
-            let best = null;
-            candidates.forEach(log => {
-                if (log.used || log.tabName !== entry.tabName) return;
-                if (!best || Math.abs(log.ord - expected) < Math.abs(best.ord - expected)) best = log;
-            });
-            matchedLog = best
-                || candidates.find(log => !log.used && log.name === entry.name)
-                || candidates.find(log => !log.used);
+            if (scrapedByTab.has(entry.tabName)) {
+                const range = tabRange.get(entry.tabName);
+                const last = lastMatch.get(entry.tabName);
+                const expected = last ? last.ord + (fileOrd[i] - last.fileOrd) : fileOrd[i] + (range ? range.head : 0);
+                let best = null;
+                candidates.forEach(log => {
+                    if (log.used || log.tabName !== entry.tabName) return;
+                    if (!best || Math.abs(log.ord - expected) < Math.abs(best.ord - expected)) best = log;
+                });
+                const isUniqueAnchor = fileKeys[i].length >= 6
+                    && (keyCountByTab.get(entry.tabName).get(fileKeys[i]) === 1)
+                    && (fileKeyCountByTab.get(entry.tabName).get(fileKeys[i]) === 1);
+                if (best && (Math.abs(best.ord - expected) <= WINDOW || isUniqueAnchor)) {
+                    matchedLog = best;
+                    lastMatch.set(entry.tabName, { ord: best.ord, fileOrd: fileOrd[i] });
+                }
+            } else {
+                // 백업기 데이터에 이 탭이 없으면(탭 이름을 못 맞춘 경우) 예전처럼 이름이 같은 대사부터
+                matchedLog = candidates.find(log => !log.used && log.name === entry.name)
+                    || candidates.find(log => !log.used);
+            }
             if (matchedLog) matchedLog.used = true;
         }
+        matches[i] = matchedLog;
+    });
 
+    // 2) [v4.18] 글자가 조금 다른 대사(수정한 대사 등)는 앞뒤 문맥으로 짝짓기
+    //   같은 탭에서 앞뒤로 짝지어진 두 대사 사이의 빈칸을 보고, 같은 캐릭터 + 글자가 비슷한 대사끼리 순서대로 짝지음
+    globContextMatchCount = 0;
+    if (scrapedByTab.size) {
+        scrapedByTab.forEach((list, tab) => {
+            const range = tabRange.get(tab);
+            if (!range) return;
+            const idxs = [];
+            globParsedEntries.forEach((entry, i) => { if (entry.tabName === tab) idxs.push(i); });
+            let prevOrd = range.head - 1;
+            let gap = [];
+            const closeGap = (nextOrd) => {
+                if (gap.length) {
+                    const pool = list.slice(prevOrd + 1, Math.max(prevOrd + 1, nextOrd)).filter(item => !item.used);
+                    if (pool.length && pool.length <= 60) {
+                        globContextMatchCount += pairByContext(gap, pool, matches, fileKeys);
+                    }
+                }
+                gap = [];
+                prevOrd = nextOrd;
+            };
+            idxs.forEach(i => {
+                const m = matches[i];
+                if (m && m.tabName === tab) closeGap(m.ord);
+                else if (!m) gap.push(i);
+            });
+            closeGap(Math.min(range.tailStart, list.length));
+        });
+    }
+
+    // 3) 화면에 쓸 로그 만들기
+    globParsedEntries.forEach((entry, i) => {
+        const matchedLog = matches[i];
         const isSystem = entry.isSystem || SYSTEM_NAMES.includes(entry.name);
         const finalName = (matchedLog && matchedLog.name) || entry.name;
 
@@ -947,9 +1060,31 @@ function buildLogsFromEntries() {
             message: entry.message,
             color: (matchedLog && matchedLog.color) || entry.color || ((entry.name === "-" || isSystem) ? "#888888" : "#b4b4b4"),
             isNarration: isNarrationFor(finalName, entry.tabName, isSystem, narrationNames),
-            isSystem
+            isSystem,
+            _noImg: !matchedLog && !entry.imgUrl
         });
     });
+
+    // [v4.17] 짝을 못 찾아 인장이 빈 줄은, 같은 탭에서 같은 캐릭터의 가장 가까운 앞(없으면 뒤) 줄 인장을 빌려 씀
+    //   (백업기를 쓴 경우에만. 표정이 다를 수 있으니, 필요하면 🖼 버튼으로 바꾸면 됨)
+    globGuessedImgCount = 0;
+    if (globScrapedLogs) {
+        const fillFrom = (list) => {
+            const last = new Map();
+            list.forEach(log => {
+                const key = `${log.tabName}\u0001${log.name}`;
+                if (log.imgUrl) { if (!log._noImg || log.imgGuessed) last.set(key, log.imgUrl); return; }
+                if (log._noImg && !log.isSystem && last.has(key)) {
+                    log.imgUrl = last.get(key);
+                    log.imgGuessed = true;
+                    globGuessedImgCount++;
+                }
+            });
+        };
+        fillFrom(tempLogs);                    // 앞 줄에서
+        fillFrom([...tempLogs].reverse());     // 앞에 없으면 뒤 줄에서
+    }
+    tempLogs.forEach(log => { delete log._noImg; });
 
     // [v4.15] 로그 파일이 1만 줄 제한 등으로 잘렸을 때, 잘린 대사를 백업기 데이터로 채움
     const finalLogs = globEntriesFromScrape ? tempLogs : fillCutLogs(tempLogs, scrapedByTab, tabRange, narrationNames);
@@ -1031,6 +1166,14 @@ function getNoticeHtml(logs) {
         lines.push(`ℹ️ 로그 파일에서 잘린 것으로 보이는 대사 <strong>${globFilledCount}개</strong>를 백업기 데이터로 채웠어요. `
             + `이 구간은 탭끼리의 시간 순서를 알 수 없어서 <strong>탭별로 묶어서</strong> 들어가 있어요.`);
     }
+    // [v4.18] 문맥으로 짝지은 줄
+    if (globContextMatchCount > 0) {
+        lines.push(`ℹ️ 글자가 조금 달랐던 <strong>${globContextMatchCount}줄</strong>은 앞뒤 대사를 보고 백업기 데이터와 짝지었어요.`);
+    }
+    // [v4.17] 인장을 빌려 쓴 줄이 있으면 알려줌
+    if (globGuessedImgCount > 0) {
+        lines.push(`ℹ️ 백업기 데이터에서 짝을 못 찾은 <strong>${globGuessedImgCount}줄</strong>은 같은 캐릭터의 바로 앞(또는 뒤) 대사 인장을 썼어요. 표정이 다르면 이미지 위 🖼 버튼으로 바꿀 수 있어요.`);
+    }
     const hasAnyImage = logs.some(log => !log.isNarration && !log.isSystem && getEffectiveImg(log));
     if (!hasAnyImage) {
         lines.push(`ℹ️ 이 파일에는 캐릭터 이미지가 들어 있지 않아요. 코코포리아에서 <strong>JSON</strong>이나 <strong>ZIP</strong> 형식으로 내보낸 파일을 쓰거나, 데이터 수집을 먼저 하거나, 🖼 이미지 설정에서 직접 넣을 수 있어요.`);
@@ -1043,6 +1186,12 @@ function buildBlocks(logs) {
     const blocks = [];
     let current = null;
     logs.forEach(log => {
+        // [v4.18] '따로' 탭 덩어리의 머리 (미리보기에서만 보이고 결과물에는 안 들어감)
+        if (log.isGroupHead) {
+            current = null;
+            blocks.push({ type: 'ghead', tabName: log.tabName, count: log.count, anchored: log.anchored, canMove: log.canMove });
+            return;
+        }
         const tagHtml = (log.tabName === '메인') ? '' : `<span class="tab-tag">${log.tabName}</span>`;
         if (log.isSystem || log.isNarration || log.name === "-") {
             current = null;
@@ -1065,6 +1214,9 @@ function buildBlocks(logs) {
 
 // 칸의 "지문" — 내용이 같으면 같은 글자가 나와서, 이미 그려진 칸을 그대로 다시 쓸 수 있음
 function blockSignature(block) {
+    if (block.type === 'ghead') {
+        return `g\u0001${block.tabName}\u0001${block.count}\u0001${block.anchored}\u0001${block.canMove}`;
+    }
     if (block.type === 'narr') {
         return `n\u0001${block.log.id}\u0001${block.log.tabName}\u0001${block.log.message}`;
     }
@@ -1074,6 +1226,14 @@ function blockSignature(block) {
 
 // 칸 하나의 HTML
 function blockHtml(block) {
+    if (block.type === 'ghead') {
+        const tab = escapeHtml(block.tabName);
+        return `<div class="group-head" data-group-tab="${tab}">
+                <span>📦 <strong>${tab}</strong> 탭 · ${block.count}줄 묶음</span>
+                ${block.canMove ? `<button type="button" class="group-move-btn">위치 옮기기</button>` : ''}
+                ${block.anchored ? `<button type="button" class="group-reset-btn">맨 뒤로</button>` : ''}
+            </div>`;
+    }
     if (block.type === 'narr') {
         const log = block.log;
         return `<div class="chat-row">
@@ -1120,11 +1280,34 @@ function renderPreview(allLogs, options = {}) {
     //   (모든 탭이 '따로'면 탭별로 모아 보기, 모두 '시간순'이면 시간 순서와 같음)
     const order = getTabList();
     const timeline = logs.filter(log => !isTabGrouped(log.tabName));
-    const grouped = logs.map((log, i) => ({ log, i }))
-        .filter(x => isTabGrouped(x.log.tabName))
-        .sort((a, b) => (order.indexOf(a.log.tabName) - order.indexOf(b.log.tabName)) || (a.i - b.i))
-        .map(x => x.log);
-    logs = [...timeline, ...grouped];
+    // [v4.18] '따로' 탭은 탭마다 한 덩어리로 묶고, 정해 둔 대사 바로 앞에 넣음 (정해 둔 곳이 없으면 맨 뒤)
+    const groups = new Map();
+    logs.forEach(log => {
+        if (!isTabGrouped(log.tabName)) return;
+        if (!groups.has(log.tabName)) groups.set(log.tabName, []);
+        groups.get(log.tabName).push(log);
+    });
+    const canMove = timeline.length > 0;
+    const timelineIds = new Set(timeline.map(log => log.id));
+    const before = new Map(); // 대사 id → 그 앞에 넣을 탭들
+    const atEnd = [];
+    order.filter(tab => groups.has(tab)).forEach(tab => {
+        const anchor = globGroupAnchor.get(tab);
+        if (anchor && timelineIds.has(anchor)) {
+            if (!before.has(anchor)) before.set(anchor, []);
+            before.get(anchor).push(tab);
+        } else {
+            atEnd.push(tab);
+        }
+    });
+    const groupHead = (tab) => ({ isGroupHead: true, tabName: tab, count: groups.get(tab).length, anchored: !!(globGroupAnchor.get(tab) && timelineIds.has(globGroupAnchor.get(tab))), canMove });
+    const ordered = [];
+    timeline.forEach(log => {
+        (before.get(log.id) || []).forEach(tab => ordered.push(groupHead(tab), ...groups.get(tab)));
+        ordered.push(log);
+    });
+    atEnd.forEach(tab => ordered.push(groupHead(tab), ...groups.get(tab)));
+    logs = ordered;
     if (logs.length === 0) {
         globBlockNodes = null;
         showStatus("선택한 탭에 대사가 없어요. 상단의 <strong>5. 탭 선택</strong>에서 탭을 골라 주세요.");
@@ -1182,7 +1365,7 @@ function buildFinalHtmlSource() {
     styleAvatarsIn(logContainer); // [v4.7] 복사·다운로드 직전에 이미지 확대 위치를 최신 값으로 다시 계산
     const cloneContainer = logContainer.cloneNode(true);
     // 편집용 버튼은 결과물에서 제거
-    cloneContainer.querySelectorAll('.bubble-actions, .avatar-change-btn').forEach(el => el.remove());
+    cloneContainer.querySelectorAll('.bubble-actions, .avatar-change-btn, .group-head').forEach(el => el.remove());
     cloneContainer.querySelectorAll('[data-log-ids]').forEach(el => el.removeAttribute('data-log-ids'));
 
     // [v4.4] 파일 안에 들어 있던 이미지는 결과물에 한 번씩만 넣어서 용량을 줄임
@@ -1279,7 +1462,49 @@ document.getElementById('html-file-picker').addEventListener('change', async (e)
 });
 
 // 프리뷰 안의 버튼들 (수정 / 삭제 / 🖼 이미지 바꾸기)
+// [v4.18] '따로' 탭 묶음 위치 옮기기
+function startPlacing(tab) {
+    globPlacingTab = tab;
+    document.getElementById('output-wrapper').classList.add('placing');
+    const toast = document.getElementById('place-toast');
+    toast.innerHTML = `📦 <strong>${escapeHtml(tab)}</strong> 탭 묶음을 넣을 곳의 대사를 누르면, 그 대사 <strong>바로 앞</strong>에 들어가요. (ESC: 취소)`;
+    toast.classList.add('show');
+}
+function stopPlacing() {
+    globPlacingTab = null;
+    document.getElementById('output-wrapper').classList.remove('placing');
+    document.getElementById('place-toast').classList.remove('show');
+}
+
 document.getElementById('output-wrapper').addEventListener('click', (e) => {
+    // 위치를 고르는 중이면: 누른 대사 바로 앞에 묶음을 넣음
+    if (globPlacingTab) {
+        e.preventDefault();
+        e.stopPropagation();
+        const row = e.target.closest('.chat-row');
+        const idEl = row && row.querySelector('[data-log-id]');
+        const log = idEl && LogStore.logs.find(l => l.id === idEl.getAttribute('data-log-id'));
+        if (!log || isTabGrouped(log.tabName)) {
+            document.getElementById('place-toast').innerHTML = `⚠️ '시간순' 탭의 대사를 눌러 주세요. 다른 '따로' 묶음 안에는 넣을 수 없어요. (ESC: 취소)`;
+            return;
+        }
+        globGroupAnchor.set(globPlacingTab, log.id);
+        stopPlacing();
+        refreshContent({ incremental: true });
+        return;
+    }
+    const moveBtn = e.target.closest('.group-move-btn');
+    if (moveBtn) {
+        e.stopPropagation();
+        startPlacing(moveBtn.closest('.group-head').dataset.groupTab);
+        return;
+    }
+    const resetBtn = e.target.closest('.group-reset-btn');
+    if (resetBtn) {
+        globGroupAnchor.delete(resetBtn.closest('.group-head').dataset.groupTab);
+        refreshContent({ incremental: true });
+        return;
+    }
     const avatarBtn = e.target.closest('.avatar-change-btn');
     if (avatarBtn) {
         e.stopPropagation();
@@ -1351,6 +1576,17 @@ document.getElementById('tab-dropdown-menu').addEventListener('click', (e) => {
     btn.textContent = grouped ? '따로' : '시간순';
 });
 
+// [v4.18] 탭 선택 안의 '나레이션 켬 / 끔' 버튼 (드롭다운을 닫을 때 한 번에 반영)
+document.getElementById('tab-dropdown-menu').addEventListener('click', (e) => {
+    const btn = e.target.closest('.narr-toggle');
+    if (!btn) return;
+    const tab = btn.dataset.tab;
+    const on = !isNarrationTab(tab);
+    globNarrationTabs.set(tab, on);
+    btn.classList.toggle('on', on);
+    btn.textContent = `나레이션 ${on ? '켬' : '끔'}`;
+});
+
 document.getElementById('theme-select').addEventListener('change', (e) => {
     if (e.target.value === 'light') document.body.classList.add('light-theme-view');
     else document.body.classList.remove('light-theme-view');
@@ -1402,6 +1638,7 @@ document.addEventListener('keydown', (e) => {
     closeAvatarMenu();
     closeNarrationDropdown();
     closeTabDropdown();
+    if (globPlacingTab) stopPlacing();
     document.getElementById('image-panel').classList.remove('open');
 });
 
