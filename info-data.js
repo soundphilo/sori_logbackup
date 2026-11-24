@@ -1,17 +1,35 @@
 // 도움말
 const HELP_DATA = [
     { text: "<strong>파일 업로드:</strong> 코코포리아 로그 출력 기능으로 내보낸 파일을 선택해 주세요. <code>HTML</code>([main]·[all] 등), <code>JSON</code>, <code>ZIP</code> 모두 가능해요. JSON·ZIP 파일에는 캐릭터 이미지가 들어 있어서 따로 수집하지 않아도 이미지가 나와요." },
-    { text: "<strong>나레이션 캐릭터 지정:</strong> 나레이션(지문)으로 뺄 캐릭터를 드롭다운에서 체크합니다. <strong>여러 명</strong>을 선택할 수 있고, 다 고른 뒤 바깥을 누르면 적용돼요. 나레이션은 <strong>메인 탭</strong>에서만 적용되고, 다른 탭에서는 일반 대화로 나와요." },
+    { text: "<strong>나레이션 캐릭터 지정:</strong> 나레이션(지문)으로 뺄 캐릭터를 드롭다운에서 체크합니다. <strong>여러 명</strong>을 선택할 수 있고, 다 고른 뒤 바깥을 누르면 적용돼요. 나레이션은 기본으로 <strong>메인 탭</strong>에서만 적용되고, <strong>5. 탭 선택</strong>에서 탭마다 켜고 끌 수 있어요." },
     { text: "<strong>캐릭터 이미지 설정:</strong> 상단의 <strong>🖼 설정</strong> 버튼에서 캐릭터별로 확대·확대 위치를 정하고 이미지를 바꿀 수 있어요. 설정은 이름별로 저장됩니다." },
     { text: "<strong>이미지 하나만 바꾸기:</strong> 프리뷰에서 이미지 위에 마우스를 올리고 <strong>🖼</strong> 버튼을 누르면 그 묶음의 이미지만 바꿀 수 있어요." },
     { text: "<strong>탭 선택:</strong> 모든 탭을 불러온 뒤 <strong>5. 탭 선택</strong>에서 보여줄 탭만 골라요. 백업기에서 잡담을 빼고 긁었으면 잡담은 꺼져 있어요." },
-    { text: "<strong>순서:</strong> <strong>5. 탭 선택</strong>에서 탭마다 <strong>시간순</strong>(다른 탭과 섞어서) / <strong>따로</strong>(맨 뒤에 모아서)를 고를 수 있어요. <strong>6. 순서</strong>에서는 모든 탭을 한 번에 바꿔요. 시간순은 로그 파일([all] HTML·JSON·ZIP)을 올렸을 때만 쓸 수 있어요." },
+    { text: "<strong>순서:</strong> <strong>5. 탭 선택</strong>에서 탭마다 <strong>시간순</strong>(다른 탭과 섞어서) / <strong>따로</strong>(한 덩어리로 묶어서)를 고를 수 있어요. 묶음 위의 <strong>위치 옮기기</strong>를 누르고 대사를 누르면 그 앞으로 옮겨져요. <strong>6. 순서</strong>에서는 모든 탭을 한 번에 바꿔요. 시간순은 로그 파일([all] HTML·JSON·ZIP)을 올렸을 때만 쓸 수 있어요." },
     { text: "<strong>실시간 편집 가능:</strong> 프리뷰 화면에서 대사 위에 마우스를 올리면 개별 대사를 <strong>수정하거나 삭제</strong>할 수 있습니다." },
     { text: "<strong>결과물 저장:</strong> 편집을 마친 뒤 상단의 버튼을 통해 HTML 코드를 복사하거나 단독 파일로 다운로드하세요." }
 ];
 
 // 패치노트
 const PATCH_DATA = [
+    {
+        version: "v4.18",
+        date: "2026-11-24",
+        changes: [
+            "글자가 조금 다른 대사(수정한 대사 등)도 앞뒤 문맥을 보고 백업기 데이터와 짝짓도록 변경.",
+            "탭마다 나레이션을 켜고 끌 수 있게 변경 (기본: 메인만 켬).",
+            "'따로' 탭 묶음을 다른 대사 사이로 옮길 수 있게 변경."
+        ]
+    },
+
+    {
+        version: "v4.17",
+        date: "2026-11-24",
+        changes: [
+            "백업기 데이터와 짝을 못 찾아 인장이 빠진 줄은, 같은 캐릭터의 가까운 대사 인장으로 채우도록 변경."
+        ]
+    },
+
     {
         version: "v4.16",
         date: "2026-11-24",
