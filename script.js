@@ -21,7 +21,7 @@ let globEntriesFromScrape = false;  // [v4.13] 파일 없이 백업기 데이터
 let globTabChoice = new Map();      // [v4.13] 탭 이름 → 보여줄지(true/false). 기본: 잡담만 끔
 let globAppliedTabKey = "";
 let globFilledCount = 0;           // [v4.15] 파일에서 잘려서 백업기 데이터로 채운 대사 수
-let globOrderMode = 'time';        // [v4.14] 'time' = 시간 순서, 'tab' = 탭별로 모아 보기         // [v4.13] 화면에 이미 반영된 탭 선택
+let globTabGrouped = new Map();     // [v4.16] 탭 이름 → true면 '따로 모아 보기', false면 '시간 순서'(다른 탭과 섞어서)
 let globParsedEntries = null;       // [v4.4] 불러온 파일에서 뽑아낸 대사 목록 (파일 형식과 상관없이 같은 모양)
 let globOriginFileName = "";
 let globNarrationNames = new Set(); // 선택된 나레이션 캐릭터들 (여러 명 가능)
@@ -505,13 +505,30 @@ function getTabList() {
     });
 }
 
+// [v4.16] 나레이션 캐릭터는 메인 탭에서만 나레이션으로 보여주고, 다른 탭에서는 일반 대화로 보여줌
+function isNarrationFor(name, tabName, isSystem, narrationNames) {
+    return !isSystem && tabName === '메인' && narrationNames.includes(name);
+}
+
+// [v4.16] 탭을 따로 모아 볼지 (백업기 데이터만 있으면 시간 순서를 알 수 없어서 항상 따로)
+function isTabGrouped(tabName) {
+    if (globEntriesFromScrape) return true;
+    return globTabGrouped.get(tabName) === true;
+}
+
 function isTabShown(tabName) {
     if (!globTabChoice.has(tabName)) globTabChoice.set(tabName, tabName !== '잡담'); // 처음 보는 탭: 잡담만 빼고 켬
     return globTabChoice.get(tabName);
 }
 
 function tabKey() {
-    return getTabList().filter(isTabShown).join('\u0001');
+    return getTabList().map(tab => `${tab}:${isTabShown(tab) ? 1 : 0}${isTabGrouped(tab) ? 1 : 0}`).join('\u0001');
+}
+
+// [v4.16] 탭마다 '시간순 / 따로' 버튼 글자
+function orderToggleHtml(tab) {
+    const grouped = isTabGrouped(tab);
+    return `<button type="button" class="order-toggle ${grouped ? 'grouped' : ''}" data-tab="${escapeHtml(tab)}" ${globEntriesFromScrape ? 'disabled title="시간 순서는 로그 파일이 있어야 쓸 수 있어요"' : ''}>${grouped ? '따로' : '시간순'}</button>`;
 }
 
 function populateTabDropdown() {
@@ -525,10 +542,14 @@ function populateTabDropdown() {
     menu.innerHTML = tabs.length === 0
         ? `<div class="dropdown-empty">탭이 없습니다</div>`
         : tabs.map(tab => `
-            <label class="dropdown-item">
-                <input type="checkbox" value="${escapeHtml(tab)}" ${isTabShown(tab) ? 'checked' : ''}>
-                <span>${escapeHtml(tab)}</span><span class="dropdown-count">${counts[tab]}</span>
-            </label>`).join('') + `<div class="dropdown-hint">다 고른 뒤 바깥을 누르면 적용돼요</div>`;
+            <div class="dropdown-item tab-row">
+                <label class="tab-check">
+                    <input type="checkbox" value="${escapeHtml(tab)}" ${isTabShown(tab) ? 'checked' : ''}>
+                    <span>${escapeHtml(tab)}</span>
+                </label>
+                <span class="dropdown-count">${counts[tab]}</span>
+                ${orderToggleHtml(tab)}
+            </div>`).join('') + `<div class="dropdown-hint">체크: 보여줄 탭 · 시간순: 다른 탭과 섞어서 · 따로: 맨 뒤에 모아서<br>다 고른 뒤 바깥을 누르면 적용돼요</div>`;
     btn.disabled = tabs.length === 0;
     updateTabDropdownLabel();
     globAppliedTabKey = tabKey();
@@ -545,20 +566,21 @@ function updateTabDropdownLabel() {
     else label.textContent = `${shown[0]} 외 ${shown.length - 1}개`;
 }
 
-// [v4.14] 순서 선택칸 상태 맞추기 (파일 없이 백업기만 쓰면 시간 순서를 알 수 없어서 '탭별'만 가능)
+// [v4.14][v4.16] 순서 선택칸 상태 맞추기: 모든 탭이 시간순이면 '시간 순서', 모두 따로면 '탭별로 모아 보기', 섞여 있으면 '탭마다 다르게'
 function updateOrderSelect() {
     const select = document.getElementById('order-select');
     if (!select) return;
     const timeOption = select.querySelector('option[value="time"]');
     if (globEntriesFromScrape) {
-        globOrderMode = 'tab';
         timeOption.disabled = true;
         timeOption.textContent = '시간 순서 (로그 파일 필요)';
     } else {
         timeOption.disabled = false;
         timeOption.textContent = '시간 순서';
     }
-    select.value = globOrderMode;
+    const tabs = getTabList();
+    const groupedCount = tabs.filter(isTabGrouped).length;
+    select.value = groupedCount === 0 ? 'time' : groupedCount === tabs.length ? 'tab' : 'mixed';
     select.disabled = LogStore.logs.length === 0;
 }
 
@@ -569,6 +591,7 @@ function closeTabDropdown() {
     const key = tabKey();
     if (key !== globAppliedTabKey) {
         globAppliedTabKey = key;
+        updateOrderSelect();
         refreshContent({ incremental: true }); // 그대로인 대사 칸은 다시 쓰고, 바뀐 곳만 새로 그림
     }
 }
@@ -586,7 +609,7 @@ function applyNarrationToLogs() {
     const narrationNames = getSelectedNarrations();
     const updated = LogStore.logs.map(log => {
         if (!log.isSystem && log.name !== "-") {
-            const isNarration = narrationNames.includes(log.name);
+            const isNarration = isNarrationFor(log.name, log.tabName, log.isSystem, narrationNames);
             return log.isNarration === isNarration ? log : { ...log, isNarration };
         }
         return log;
@@ -833,6 +856,30 @@ function buildLogsFromEntries() {
             });
     }
 
+    // [v4.16] 백업기가 읽은 탭 이름이 파일의 탭 이름과 다르면, 대사 내용이 가장 많이 겹치는 파일 탭으로 맞춤
+    if (scrapedByTab.size && !globEntriesFromScrape) {
+        const fileKeysByTab = new Map();
+        globParsedEntries.forEach(entry => {
+            if (!fileKeysByTab.has(entry.tabName)) fileKeysByTab.set(entry.tabName, new Set());
+            fileKeysByTab.get(entry.tabName).add(getPureKey(entry.message));
+        });
+        [...scrapedByTab.keys()].forEach(tab => {
+            if (fileKeysByTab.has(tab)) return;
+            const list = scrapedByTab.get(tab);
+            let bestTab = null, bestHits = 0;
+            fileKeysByTab.forEach((keys, fileTab) => {
+                const hits = list.filter(item => keys.has(item.key)).length;
+                if (hits > bestHits) { bestHits = hits; bestTab = fileTab; }
+            });
+            if (bestTab && bestHits >= Math.max(3, list.length * 0.3)) {
+                const target = scrapedByTab.get(bestTab) || [];
+                list.forEach(item => { item.tabName = bestTab; item.ord = target.length; target.push(item); });
+                scrapedByTab.set(bestTab, target);
+                scrapedByTab.delete(tab);
+            }
+        });
+    }
+
     // 파일 대사마다 "그 탭 안에서 몇 번째인지" 계산
     const fileKeys = globParsedEntries.map(entry => getPureKey(entry.message));
     const fileOrd = [];
@@ -899,7 +946,7 @@ function buildLogsFromEntries() {
             customImg: "",
             message: entry.message,
             color: (matchedLog && matchedLog.color) || entry.color || ((entry.name === "-" || isSystem) ? "#888888" : "#b4b4b4"),
-            isNarration: !isSystem && narrationNames.includes(finalName),
+            isNarration: isNarrationFor(finalName, entry.tabName, isSystem, narrationNames),
             isSystem
         });
     });
@@ -951,7 +998,7 @@ function fillCutLogs(fileLogs, scrapedByTab, tabRange, narrationNames) {
             customImg: "",
             message: textToHtml(item.message),
             color: item.color || ((item.name === "-" || isSystem) ? "#888888" : "#b4b4b4"),
-            isNarration: !isSystem && narrationNames.includes(item.name),
+            isNarration: isNarrationFor(item.name, item.tabName, isSystem, narrationNames),
             isSystem,
             filled: true
         };
@@ -1069,13 +1116,15 @@ function blockHtml(block) {
 function renderPreview(allLogs, options = {}) {
     const wrapper = document.getElementById('output-wrapper');
     let logs = allLogs.filter(log => isTabShown(log.tabName)); // [v4.13] 고른 탭만
-    // [v4.14] 탭별로 모아 보기: 탭 순서대로 묶되, 같은 탭 안에서는 원래 순서 유지
-    if (globOrderMode === 'tab') {
-        const order = getTabList();
-        logs = logs.map((log, i) => ({ log, i }))
-            .sort((a, b) => (order.indexOf(a.log.tabName) - order.indexOf(b.log.tabName)) || (a.i - b.i))
-            .map(x => x.log);
-    }
+    // [v4.16] 순서: '시간순' 탭들은 서로 섞어서 시간 순서대로 먼저, '따로' 탭들은 그 뒤에 탭 순서대로 모아서
+    //   (모든 탭이 '따로'면 탭별로 모아 보기, 모두 '시간순'이면 시간 순서와 같음)
+    const order = getTabList();
+    const timeline = logs.filter(log => !isTabGrouped(log.tabName));
+    const grouped = logs.map((log, i) => ({ log, i }))
+        .filter(x => isTabGrouped(x.log.tabName))
+        .sort((a, b) => (order.indexOf(a.log.tabName) - order.indexOf(b.log.tabName)) || (a.i - b.i))
+        .map(x => x.log);
+    logs = [...timeline, ...grouped];
     if (logs.length === 0) {
         globBlockNodes = null;
         showStatus("선택한 탭에 대사가 없어요. 상단의 <strong>5. 탭 선택</strong>에서 탭을 골라 주세요.");
@@ -1284,8 +1333,22 @@ document.getElementById('image-file-picker').addEventListener('change', async (e
 // [v4.7] 테마를 바꿀 때 로그 전체를 다시 그리지 않고, 색깔 설정(style)만 바꿔 끼움
 // [v4.14] 순서 바꾸기 (그대로인 대사 칸은 다시 쓰고, 바뀐 곳만 새로 그림)
 document.getElementById('order-select').addEventListener('change', (e) => {
-    globOrderMode = e.target.value === 'tab' ? 'tab' : 'time';
+    if (e.target.value === 'mixed') return; // '탭마다 다르게'는 탭 선택에서 고름
+    const grouped = e.target.value === 'tab';
+    getTabList().forEach(tab => globTabGrouped.set(tab, grouped)); // 모든 탭을 한꺼번에
+    populateTabDropdown();
     refreshContent({ incremental: true });
+});
+
+// [v4.16] 탭 선택 안의 '시간순 / 따로' 버튼 (드롭다운을 닫을 때 한 번에 반영)
+document.getElementById('tab-dropdown-menu').addEventListener('click', (e) => {
+    const btn = e.target.closest('.order-toggle');
+    if (!btn || btn.disabled) return;
+    const tab = btn.dataset.tab;
+    const grouped = !isTabGrouped(tab);
+    globTabGrouped.set(tab, grouped);
+    btn.classList.toggle('grouped', grouped);
+    btn.textContent = grouped ? '따로' : '시간순';
 });
 
 document.getElementById('theme-select').addEventListener('change', (e) => {
