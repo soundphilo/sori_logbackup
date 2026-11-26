@@ -47,7 +47,7 @@ const SYSTEM_NAMES = ["System", "system", "시스템"];
 //   zoom: 확대 배율, fx/fy: 확대할 위치(0~1), img: 바꾼 이미지
 // ==========================================
 const CHAR_SETTINGS_KEY = 'sori-ccfolia-char-settings';
-const DEFAULT_CHAR_SETTING = { zoom: 1, fx: 0.5, fy: 0.5, img: "" };
+const DEFAULT_CHAR_SETTING = { zoom: 1, fx: 0.5, fy: 0.5, img: "", nameColor: "" }; // [v4.24] nameColor: 직접 고른 이름 색
 let globCharSettings = loadCharSettings();
 let globSaveTimer = null;
 
@@ -139,6 +139,11 @@ function getCharList() {
 }
 
 // 실제로 보여줄 이미지: 묶음별로 바꾼 이미지 > 캐릭터 전체로 바꾼 이미지 > 원래 이미지
+// [v4.24] 이름 색: 설정 창에서 직접 고른 색이 있으면 그 색, 없으면 원래 색
+function getNameColor(name, original) {
+    return getCharSetting(name).nameColor || original;
+}
+
 function getEffectiveImg(log) {
     return log.customImg || getCharSetting(log.name).img || log.imgUrl || "";
 }
@@ -496,7 +501,9 @@ function renderImagePanel() {
         const setting = getCharSetting(name);
         const idx = charIdx(name);
         const img = displayImgUrl(getCharBaseImg(name));
-        const color = (LogStore.logs.find(log => log.name === name) || {}).color || '#ffffff';
+        const originalColor = (LogStore.logs.find(log => log.name === name) || {}).color || '#ffffff';
+        const color = getNameColor(name, originalColor);
+        const colorHex = toHex(parseColor(color) || [255, 255, 255]);
         const zoomPct = Math.round(setting.zoom * 100);
 
         const pickerHtml = img
@@ -522,6 +529,12 @@ function renderImagePanel() {
             <div class="panel-slider-row">
                 <label>확대 <span class="val" data-val="zoom">${zoomPct}%</span></label>
                 <input type="range" data-field="zoom" min="100" max="400" step="10" value="${zoomPct}">
+            </div>
+            <div class="name-color-row">
+                <label>이름 색</label>
+                <input type="color" data-field="nameColor" value="${colorHex}">
+                <span class="val">${setting.nameColor ? '직접 고름' : '원래 색'}</span>
+                ${setting.nameColor ? `<button type="button" class="mini-link" data-action="name-color-reset">원래 색으로</button>` : ''}
             </div>
             <div class="char-card-btns">
                 <button type="button" class="panel-btn" data-action="file">📁 파일로 변경</button>
@@ -1310,7 +1323,7 @@ function blockSignature(block) {
     if (block.type === 'narr') {
         return `n\u0001${block.log.id}\u0001${block.log.tabName}\u0001${block.log.message}\u0001${globMoves.has(block.log.id) ? 1 : 0}`;
     }
-    return `c\u0001${block.name}\u0001${displayImgUrl(block.imgUrl)}\u0001${block.tabName}\u0001${block.color}\u0001`
+    return `c\u0001${block.name}\u0001${displayImgUrl(block.imgUrl)}\u0001${block.tabName}\u0001${getNameColor(block.name, block.color)}\u0001`
         + block.messages.map(m => `${m.id}\u0002${m.message}\u0002${globMoves.has(m.id) ? 1 : 0}`).join('\u0001');
 }
 
@@ -1358,7 +1371,7 @@ function blockHtml(block) {
             ${block.tagHtml}
             <div class="avatar-box" data-char-idx="${charIdx(block.name)}" data-log-ids="${ids}">${shownImg ? `<img src="${escapeHtml(shownImg)}" alt="">` : ''}<button type="button" class="avatar-change-btn" title="이 이미지 바꾸기">🖼</button><button type="button" class="avatar-move-btn" title="이 칸(말풍선 묶음)을 통째로 옮기기">↕</button></div>
             <div class="text-wrap">
-                <span class="char-name ${nameClass(block.color)}" style="color:${block.color}">${block.name}</span>
+                <span class="char-name ${nameClass(getNameColor(block.name, block.color))}" style="color:${getNameColor(block.name, block.color)}">${block.name}</span>
                 <div class="bubbles-container">${bubblesHtml}</div>
             </div>
         </div>`;
@@ -2045,11 +2058,32 @@ document.getElementById('image-panel-list').addEventListener('input', (e) => {
     const name = globCharNames[card.dataset.charIdx];
     const value = parseInt(e.target.value, 10);
 
+    if (field === 'nameColor') {
+        // [v4.24] 고르는 동안에는 화면의 이름 색만 바로 바꿔서 보여줌
+        const picked = e.target.value;
+        card.querySelector('.char-card-name').style.color = picked;
+        document.querySelectorAll('#output-wrapper .chat-row').forEach(row => {
+            const nameEl = row.querySelector('.char-name');
+            if (nameEl && nameEl.textContent === name) { nameEl.style.color = picked; nameEl.className = 'char-name'; }
+        });
+        return;
+    }
     if (field === 'zoom') {
         setCharSetting(name, { zoom: value / 100 });
         card.querySelector('[data-val="zoom"]').textContent = `${value}%`;
     }
     updateCharAvatars(name);
+});
+
+// [v4.24] 이름 색을 다 골랐으면 저장하고, 결과물에도 들어가도록 다시 그림
+document.getElementById('image-panel-list').addEventListener('change', (e) => {
+    if (e.target.dataset.field !== 'nameColor') return;
+    const card = e.target.closest('.char-card');
+    const name = globCharNames[card.dataset.charIdx];
+    setCharSetting(name, { nameColor: e.target.value });
+    saveCharSettingsNow();
+    refreshContent({ incremental: true });
+    renderImagePanel();
 });
 
 // 패널: 원래대로 / 파일로 변경 / URL로 변경
@@ -2059,6 +2093,13 @@ document.getElementById('image-panel-list').addEventListener('click', (e) => {
     const card = e.target.closest('.char-card');
     const name = globCharNames[card.dataset.charIdx];
 
+    if (action === 'name-color-reset') {
+        setCharSetting(name, { nameColor: '' });
+        saveCharSettingsNow();
+        refreshContent({ incremental: true });
+        renderImagePanel();
+        return;
+    }
     if (action === 'reset') {
         delete globCharSettings[name];
         saveCharSettingsNow();
