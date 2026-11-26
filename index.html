@@ -306,6 +306,11 @@
         .char-card-result { display: flex; flex-direction: column; gap: 4px; color: #6f7594; font-size: 11px; }
         .char-card-result .avatar-box { margin-right: 0; background: #141414; }
         .char-card-btns { display: flex; gap: 8px; }
+        /* [v4.24] 이름 색 고르기 */
+        .name-color-row { display: flex; align-items: center; gap: 8px; color: #e2e8f0; }
+        .name-color-row input[type="color"] { width: 36px; height: 24px; padding: 0; border: 1px solid #3b4260; border-radius: 4px; background: none; cursor: pointer; }
+        .name-color-row .val { color: #6f7594; font-size: 11px; }
+        .name-color-row .mini-link { margin-left: auto; }
         .panel-btn {
             flex: 1; padding: 7px; border-radius: 6px; font-size: 12px; cursor: pointer;
             background: #252940; color: #e2e8f0; border: 1px solid #3b4260;
@@ -640,7 +645,7 @@
     </div>
 
     <!-- [v4.12] 뒤의 ?v=번호 : 파일을 고칠 때마다 이 번호를 바꾸면 브라우저가 예전 파일 대신 새 파일을 불러옴 -->
-    <script src="info-data.js?v=4.23"></script>
+    <script src="info-data.js?v=4.24"></script>
 
     <script>
         document.addEventListener("DOMContentLoaded", () => {
@@ -700,7 +705,7 @@
 
     <!-- [v4.4] ZIP 파일을 여는 도구 -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
-    <script src="themes.js?v=4.23"></script>
-    <script src="script.js?v=4.23"></script>
+    <script src="themes.js?v=4.24"></script>
+    <script src="script.js?v=4.24"></script>
 </body>
 </html>
